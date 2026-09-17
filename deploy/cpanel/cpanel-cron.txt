@@ -1,0 +1,23 @@
+# ==============================================================================
+# Laijau ERP — cPanel Cron Job Configuration
+# ==============================================================================
+# In cPanel -> Cron Jobs, add the following entry to execute once every minute.
+#
+# Schedule: * * * * * (Once Per Minute)
+#
+# IMPORTANT:
+# Replace the PHP binary path (/usr/local/bin/php or /opt/cpanel/ea-php84/root/usr/bin/php)
+# and application path with the exact values for your cPanel account.
+#
+# ==============================================================================
+
+# Command (Replace /home/username/laijau with your actual cPanel home path):
+* * * * * cd /home/laijauco/laijau && /usr/local/bin/php artisan schedule:run >> /dev/null 2>&1
+
+# ==============================================================================
+# The single schedule:run command orchestrates:
+# - Queue worker execution (on-demand draining without persistent daemons)
+# - Hourly / Daily automated database backups
+# - Daily expired stock reservation release
+# - System health monitoring
+# ==============================================================================

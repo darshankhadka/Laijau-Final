@@ -1,0 +1,22 @@
+{
+    "name": "Laijau ERP",
+    "short_name": "Laijau ERP",
+    "description": "Laijau Enterprise Retail & Operations Platform",
+    "start_url": "/admin",
+    "scope": "/admin/",
+    "display": "standalone",
+    "background_color": "#FFFFFF",
+    "theme_color": "#0A2E23",
+    "icons": [
+        {
+            "src": "/android-chrome-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/android-chrome-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

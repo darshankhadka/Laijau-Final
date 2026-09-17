@@ -1,0 +1,46 @@
+# ==============================================================================
+# NepalAura ERP — Root Directory Gateway & Security Shield for Shared Hosting
+# Protects sensitive folders when the project root is located inside public_html
+# ==============================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Prevent direct access to sensitive core directories (vendor is allowed through to public/vendor)
+    RewriteRule ^(app|bootstrap|config|database|resources|routes|tests)(\/|$) - [F,L,NC]
+    RewriteRule ^storage\/(framework|logs|app\/private)(\/|$) - [F,L,NC]
+
+    # Block access to hidden files (.env, .git, etc.)
+    RewriteRule (^|/)\.(?!well-known) - [F,L]
+
+    # Block direct access to sensitive extensions
+    RewriteRule \.(env|log|sql|sqlite|yml|yaml|ini|sh|bak|swp|dist|lock|json)$ - [F,L,NC]
+
+    # Rewrite all public traffic to the public/ subfolder
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Block directory indexing
+Options -Indexes
+
+# Deny direct access to critical dotfiles and environment configurations
+<FilesMatch "^\.">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<FilesMatch "\.(env|log|sql|sqlite|json|lock|yml|yaml)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>

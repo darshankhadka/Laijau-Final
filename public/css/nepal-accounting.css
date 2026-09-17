@@ -1,0 +1,1491 @@
+/* ==========================================================================
+   LAIJAU — NEPAL ACCOUNTING & FINTECH DESIGN SYSTEM (NAS)
+   Pure Vanilla CSS for Filament Admin Pages (Zero External Dependencies)
+   ========================================================================== */
+
+:root {
+    --na-emerald: #0A2E23;
+    --na-emerald-hover: #134637;
+    --na-emerald-light: #EBF3EE;
+    --na-emerald-border: #B7D2C5;
+    --na-gold: #C5A059;
+    --na-gold-light: #FBF6EC;
+    --na-gold-border: #DFC288;
+    --na-ivory: #FDFBF7;
+    --na-bg: #F8F7F4;
+    --na-card: #FFFFFF;
+    --na-card-subtle: #F9FAFB;
+    --na-border: rgba(229, 231, 235, 0.95);
+    --na-border-strong: #D1D5DB;
+    --na-text: #111827;
+    --na-text-secondary: #4B5563;
+    --na-text-muted: #6B7280;
+    --na-rose: #DC2626;
+    --na-rose-light: #FEF2F2;
+    --na-rose-border: #FCA5A5;
+    --na-success: #059669;
+    --na-success-light: #ECFDF5;
+    --na-success-border: #6EE7B7;
+    --na-blue: #2563EB;
+    --na-blue-light: #EFF6FF;
+    --na-purple: #7C3AED;
+    --na-purple-light: #F5F3FF;
+}
+
+.dark, html.dark, body.dark, [data-theme="dark"] {
+    --na-bg: #0D1117;
+    --na-card: #161B22;
+    --na-card-subtle: #1F242C;
+    --na-border: rgba(51, 65, 85, 0.85);
+    --na-border-strong: #334155;
+    --na-text: #F8FAFC;
+    --na-text-secondary: #CBD5E1;
+    --na-text-muted: #94A3B8;
+    --na-emerald-light: #162C24;
+    --na-emerald-border: #1E4637;
+    --na-gold-light: #2A2418;
+    --na-rose-light: #2D1515;
+    --na-success-light: #132E24;
+    --na-blue-light: #172554;
+    --na-purple-light: #2E1065;
+}
+
+/* 1. HIDE DEFAULT FILAMENT CORE PAGE HEADERS ONLY ON PAGES WITH CUSTOM HERO BANNERS */
+.fi-page:has(.na-header-banner)>.fi-header,
+.fi-page:has(.na-accounting-root)>.fi-header,
+.fi-page:has(.na-bank-root)>.fi-header,
+.fi-page:has(.na-vat-root)>.fi-header,
+.fi-page:has(.na-settings-root)>.fi-header {
+    display: none !important;
+}
+
+/* 2. ROOT WRAPPERS */
+.na-accounting-root,
+.na-bank-root,
+.na-vat-root,
+.na-inventory-root,
+.na-settings-root {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica NNpe", Arial, sans-serif;
+    color: var(--na-text);
+    background: var(--na-bg);
+    min-height: 100vh;
+    padding: 1.5rem;
+    box-sizing: border-box;
+}
+
+/* 3. CARD SYSTEM */
+.na-card {
+    background: var(--na-card);
+    border: 1px solid var(--na-border);
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+    overflow: hidden;
+}
+
+.na-card-p6 {
+    padding: 1.5rem;
+}
+
+.na-card-p4 {
+    padding: 1rem;
+}
+
+.na-card-hover:hover {
+    border-color: rgba(197, 160, 89, 0.4);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+}
+
+/* 4. HEADER HERO BANNERS (Clean Minimalist Light Mode) */
+.na-header-banner {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 1.25rem 1.75rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+    color: #0F172A;
+}
+
+.dark .na-header-banner {
+    background: #0F172A;
+    border: 1px solid #1E293B;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.25);
+    color: #F8FAFC;
+}
+
+.na-title-main {
+    font-family: inherit;
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #0F172A;
+    margin: 0.25rem 0 0 0;
+}
+
+.dark .na-title-main {
+    color: #F8FAFC;
+}
+
+.na-subtitle {
+    font-size: 0.8125rem;
+    color: #64748B;
+    margin: 0.25rem 0 0 0;
+    max-width: 48rem;
+    line-height: 1.45;
+}
+
+.dark .na-subtitle {
+    color: #94A3B8;
+}
+
+/* 5. GRID LAYOUTS (Self-contained vanilla grid) */
+.na-grid-8 {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.15rem;
+    margin-bottom: 1.75rem;
+}
+
+@media (max-width: 1180px) {
+    .na-grid-8 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+    }
+}
+
+@media (max-width: 640px) {
+    .na-grid-8 {
+        grid-template-columns: 1fr;
+        gap: 0.875rem;
+    }
+}
+
+.na-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1024px) {
+    .na-grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .na-grid-4 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.na-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 900px) {
+    .na-grid-3 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.na-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+    .na-grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.na-grid-2-1 {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 960px) {
+    .na-grid-2-1 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* 6. FLEXBOX UTILITIES */
+.na-flex {
+    display: flex;
+}
+
+.na-flex-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.na-flex-wrap {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.na-items-center {
+    align-items: center;
+}
+
+.na-items-start {
+    align-items: flex-start;
+}
+
+.na-items-end {
+    align-items: flex-end;
+}
+
+.na-justify-between {
+    justify-content: space-between;
+}
+
+.na-justify-end {
+    justify-content: flex-end;
+}
+
+.na-justify-center {
+    justify-content: center;
+}
+
+.na-gap-1 {
+    gap: 0.25rem;
+}
+
+.na-gap-2 {
+    gap: 0.5rem;
+}
+
+.na-gap-3 {
+    gap: 0.75rem;
+}
+
+.na-gap-4 {
+    gap: 1rem;
+}
+
+.na-gap-6 {
+    gap: 1.5rem;
+}
+
+/* 7. HIGH-DENSITY METRIC CARDS */
+.na-metric-card {
+    background: var(--na-card);
+    border: 1px solid var(--na-border);
+    border-radius: 12px;
+    padding: 1.15rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: all 0.2s ease;
+}
+
+.na-metric-card:hover {
+    border-color: var(--na-emerald-border);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.na-metric-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--na-text-muted);
+}
+
+.na-metric-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--na-text);
+    margin: 0.4rem 0 0.2rem 0;
+}
+
+.na-metric-sub {
+    font-size: 0.72rem;
+    color: var(--na-text-secondary);
+}
+
+/* 8. NORDIC LUXURY DEBIT CARDS */
+.nordic-debit-card {
+    border-radius: 16px;
+    padding: 1.75rem;
+    position: relative;
+    overflow: hidden;
+    color: #FFFFFF;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 220px;
+}
+
+.nordic-debit-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.22);
+}
+
+.debit-card-npr {
+    background: linear-gradient(135deg, #0A2E23 0%, #154D3B 60%, #08241B 100%);
+}
+
+.debit-card-npr {
+    background: linear-gradient(135deg, #0F1E36 0%, #1C355E 60%, #0B172A 100%);
+}
+
+.debit-card-cash {
+    background: linear-gradient(135deg, #26231E 0%, #423C34 60%, #1A1814 100%);
+}
+
+.nordic-chip {
+    width: 42px;
+    height: 30px;
+    background: linear-gradient(135deg, #e6c875 0%, #b89345 50%, #f3df9b 100%);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    position: relative;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.nordic-chip::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.nordic-chip::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.card-bank-title {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    opacity: 0.85;
+}
+
+.card-account-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.card-balance-lbl {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.75;
+}
+
+.card-balance-val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 1.85rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-top: 0.2rem;
+}
+
+.card-bottom-row {
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding-top: 0.85rem;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    font-size: 0.75rem;
+}
+
+/* 9. FINTECH CLEARING PIPELINE */
+.na-pipeline-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+@media (max-width: 900px) {
+    .na-pipeline-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.na-pipeline-step {
+    border-radius: 12px;
+    padding: 1.15rem;
+    border: 1px solid var(--na-border);
+    background: var(--na-card-subtle);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+/* 10. NAVIGATION TAB BAR */
+.na-tab-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--na-card);
+    border: 1px solid var(--na-border);
+    border-radius: 12px;
+    padding: 0.35rem;
+    margin-bottom: 1.5rem;
+    overflow-x: auto;
+}
+
+.na-tab-btn {
+    padding: 0.6rem 1.15rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    background: transparent;
+    color: var(--na-text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.na-tab-btn:hover {
+    color: var(--na-text);
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.dark .na-tab-btn:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.na-tab-btn.active {
+    background: var(--na-emerald);
+    color: #FFFFFF;
+    box-shadow: 0 2px 6px rgba(10, 46, 35, 0.3);
+}
+
+/* 11. FINANCIAL TABLES & WATERFALL STATEMENTS */
+.na-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.na-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    text-align: left;
+}
+
+.na-table th {
+    padding: 0.85rem 1rem;
+    background: var(--na-card-subtle);
+    color: var(--na-text-secondary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--na-border);
+}
+
+.na-table td {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--na-border);
+    color: var(--na-text);
+}
+
+.na-table tr:hover td {
+    background: rgba(10, 46, 35, 0.02);
+}
+
+.dark .na-table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.na-pnl-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--na-border);
+    font-size: 0.85rem;
+}
+
+.na-pnl-row.subtotal {
+    background: var(--na-emerald-light);
+    font-weight: 800;
+    color: var(--na-emerald);
+    border-radius: 8px;
+    margin: 0.35rem 0;
+    border: 1px solid var(--na-emerald-border);
+}
+
+.dark .na-pnl-row.subtotal {
+    background: #143026;
+    color: #8DE0C4;
+}
+
+.na-pnl-row.final {
+    background: var(--na-emerald);
+    color: #FFFFFF;
+    font-size: 1rem;
+    font-weight: 800;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-top: 0.75rem;
+}
+
+/* 12. BUTTONS & INPUTS */
+.na-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.65rem 1.15rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+    text-decoration: none;
+    box-sizing: border-box;
+}
+
+.na-btn-emerald {
+    background: var(--na-emerald);
+    color: #FFFFFF;
+    box-shadow: 0 1px 3px rgba(10, 46, 35, 0.3);
+}
+
+.na-btn-emerald:hover {
+    background: var(--na-emerald-hover);
+}
+
+.na-btn-purple {
+    background: #635BFF;
+    color: #FFFFFF;
+}
+
+.na-btn-purple:hover {
+    background: #4E44E5;
+}
+
+.na-btn-blue {
+    background: #5A78FF;
+    color: #FFFFFF;
+}
+
+.na-btn-blue:hover {
+    background: #4362F0;
+}
+
+.na-btn-secondary {
+    background: var(--na-card);
+    border: 1px solid var(--na-border-strong);
+    color: var(--na-text);
+}
+
+.na-btn-secondary:hover {
+    background: var(--na-card-subtle);
+}
+
+.na-input {
+    width: 100%;
+    padding: 0.6rem 0.85rem;
+    font-size: 0.8rem;
+    border: 1px solid var(--na-border-strong);
+    border-radius: 8px;
+    background: var(--na-card);
+    color: var(--na-text);
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.na-input:focus {
+    border-color: var(--na-emerald);
+    box-shadow: 0 0 0 2px rgba(10, 46, 35, 0.15);
+}
+
+.na-select {
+    padding: 0.6rem 0.85rem;
+    font-size: 0.8rem;
+    border: 1px solid var(--na-border-strong);
+    border-radius: 8px;
+    background: var(--na-card);
+    color: var(--na-text);
+    outline: none;
+    cursor: pointer;
+}
+
+/* 13. BADGES & PILLS */
+.na-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.na-badge-emerald {
+    background: var(--na-emerald-light);
+    color: var(--na-emerald);
+    border: 1px solid var(--na-emerald-border);
+}
+
+.na-badge-gold {
+    background: var(--na-gold-light);
+    color: #8A651E;
+    border: 1px solid var(--na-gold-border);
+}
+
+.na-badge-blue {
+    background: var(--na-blue-light);
+    color: var(--na-blue);
+    border: 1px solid #BFDBFE;
+}
+
+.na-badge-purple {
+    background: var(--na-purple-light);
+    color: var(--na-purple);
+    border: 1px solid #DDD6FE;
+}
+
+.na-badge-amber {
+    background: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #FDE68A;
+}
+
+.na-badge-rose {
+    background: var(--na-rose-light);
+    color: var(--na-rose);
+    border: 1px solid var(--na-rose-border);
+}
+
+/* 14. CALCULATION PREVIEW BOX */
+.na-calc-box {
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    border: 1px solid var(--na-border);
+    margin: 1rem 0;
+    font-size: 0.78rem;
+}
+
+.na-calc-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+}
+
+.na-calc-total {
+    border-top: 1px solid var(--na-border);
+    margin-top: 0.4rem;
+    padding-top: 0.5rem;
+    font-weight: 800;
+}
+
+/* 15. MODALS */
+.na-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.na-modal-content {
+    background: var(--na-card);
+    border: 1px solid var(--na-border);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 580px;
+    padding: 1.75rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    box-sizing: border-box;
+}
+
+/* 16. RUBRIK ROWS & PROGRESS TRACKS */
+.na-rubrik-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--na-border);
+    transition: background 0.15s ease;
+}
+
+.na-rubrik-row:hover {
+    background: rgba(10, 46, 35, 0.02);
+}
+
+.na-progress-track {
+    width: 100%;
+    height: 8px;
+    border-radius: 9999px;
+    background: var(--na-border);
+    overflow: hidden;
+    margin-top: 0.5rem;
+}
+
+.na-progress-bar {
+    height: 100%;
+    border-radius: 9999px;
+    background: var(--na-blue);
+    transition: width 0.4s ease;
+}
+
+/* 17. ENTERPRISE INVENTORY MODULE STYLES */
+.inv-quick-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--na-card);
+    border: 1px solid var(--na-border);
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--na-text);
+    text-decoration: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.inv-quick-btn:hover {
+    border-color: var(--na-gold);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+    color: var(--na-text);
+}
+
+.inv-wh-card {
+    background: var(--na-card);
+    border: 1px solid var(--na-border);
+    border-radius: 14px;
+    padding: 16px 18px;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.inv-wh-card:hover {
+    border-color: var(--na-gold);
+    box-shadow: 0 4px 12px rgba(197, 160, 89, 0.12);
+}
+
+.inv-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    background: var(--na-card);
+    border-radius: 14px;
+    border: 1px solid var(--na-border);
+}
+
+.inv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+}
+
+.inv-table th {
+    padding: 12px 16px;
+    background: var(--na-card-subtle);
+    color: var(--na-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--na-border);
+    white-space: nowrap;
+}
+
+.inv-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--na-border);
+    color: var(--na-text);
+    vertical-align: middle;
+}
+
+.inv-table tr:hover td {
+    background: rgba(10, 46, 35, 0.02);
+}
+
+.dark .inv-table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.inv-table tfoot td {
+    background: var(--na-card-subtle);
+    font-weight: 700;
+    border-top: 2px solid var(--na-border-strong);
+    color: var(--na-text);
+}
+
+/* ==========================================================================
+   EXECUTIVE ACCOUNTING DASHBOARD V2 — DESIGN TOKENS
+   ========================================================================== */
+
+/* Clean Minimalist Light-Mode Header Banner */
+.na-header-banner.na-header-banner-minimal {
+    background: #FFFFFF !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 14px;
+    padding: 1.25rem 1.75rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
+    color: #0F172A !important;
+}
+
+.dark .na-header-banner.na-header-banner-minimal {
+    background: #0F172A !important;
+    border-color: #1E293B !important;
+    color: #F8FAFC !important;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.25) !important;
+}
+
+.na-header-banner.na-header-banner-minimal .na-title-main {
+    font-family: inherit;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #0F172A;
+    letter-spacing: -0.02em;
+    margin: 0;
+    line-height: 1.25;
+}
+
+.dark .na-header-banner.na-header-banner-minimal .na-title-main {
+    color: #F8FAFC;
+}
+
+.na-header-banner.na-header-banner-minimal .na-subtitle {
+    font-size: 0.8125rem;
+    color: #64748B;
+    margin: 0.25rem 0 0 0;
+    line-height: 1.4;
+}
+
+.dark .na-header-banner.na-header-banner-minimal .na-subtitle {
+    color: #94A3B8;
+}
+
+.na-header-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* Minimalist Preset Segmented Bar */
+.na-preset-group-minimal {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    background: #F1F5F9;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 3px;
+}
+
+.dark .na-preset-group-minimal {
+    background: #1E293B;
+    border-color: #334155;
+}
+
+.na-preset-btn-minimal {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.dark .na-preset-btn-minimal {
+    color: #94A3B8;
+}
+
+.na-preset-btn-minimal:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #0F172A;
+}
+
+.dark .na-preset-btn-minimal:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #F8FAFC;
+}
+
+.na-preset-btn-minimal.active {
+    background: #FFFFFF;
+    color: #0F172A;
+    font-weight: 700;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.dark .na-preset-btn-minimal.active {
+    background: #334155;
+    color: #FFFFFF;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* Minimalist Header Action Buttons */
+.na-actions-minimal {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.na-btn-minimal-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 1px solid #E2E8F0;
+    background: #FFFFFF;
+    color: #334155;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+.dark .na-btn-minimal-action {
+    background: #1E293B;
+    border-color: #334155;
+    color: #CBD5E1;
+}
+
+.na-btn-minimal-action:hover {
+    background: #F8FAFC;
+    border-color: #CBD5E1;
+    color: #0F172A;
+}
+
+.dark .na-btn-minimal-action:hover {
+    background: #334155;
+    border-color: #475569;
+    color: #F8FAFC;
+}
+
+/* Hero Banner Luxury */
+.na-header-banner-lux {
+    background: linear-gradient(135deg, #0A2E23 0%, #154D3B 50%, #081B14 100%);
+    border: 1px solid #1E4637;
+    border-radius: 16px;
+    padding: 1.85rem 2.25rem;
+    margin-bottom: 1.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    box-shadow: 0 10px 30px -5px rgba(10, 46, 35, 0.25);
+    color: #FFFFFF;
+    position: relative;
+    overflow: hidden;
+}
+
+.dark .na-header-banner-lux {
+    background: linear-gradient(135deg, #071E17 0%, #0E3529 50%, #05140F 100%);
+    border-color: #163E30;
+    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.45);
+}
+
+.na-header-banner-lux::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(197, 160, 89, 0.08) 0%, rgba(10, 46, 35, 0) 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.na-header-banner-lux>* {
+    position: relative;
+    z-index: 1;
+}
+
+.na-header-banner-lux .na-title-main {
+    color: #FFFFFF;
+    font-size: 1.85rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    margin: 0.35rem 0 0 0;
+}
+
+.na-header-banner-lux .na-subtitle {
+    color: #CBD5E1;
+    font-size: 0.875rem;
+    margin-top: 0.35rem;
+    line-height: 1.5;
+}
+
+/* Preset Pill Group in Hero */
+.na-hero-preset-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: rgba(0, 0, 0, 0.25);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 0.3rem 0.35rem;
+}
+
+.na-hero-preset-btn {
+    padding: 0.45rem 0.85rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: #E2E8F0;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.na-hero-preset-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #FFFFFF;
+}
+
+.na-hero-preset-btn.active {
+    background: #C5A059;
+    color: #0A2E23;
+    font-weight: 800;
+    box-shadow: 0 2px 6px rgba(197, 160, 89, 0.3);
+}
+
+.na-hero-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.6rem 1.15rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(197, 160, 89, 0.4);
+    background: rgba(197, 160, 89, 0.15);
+    color: #DFC288;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+.na-hero-action-btn:hover {
+    background: #C5A059;
+    color: #0A2E23;
+    border-color: #C5A059;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(197, 160, 89, 0.25);
+}
+
+/* Executive 8-Card Metric Grid Lux */
+.na-metric-card-lux {
+    background: var(--na-card);
+    border: 1px solid var(--na-border);
+    border-radius: 14px;
+    padding: 1.25rem 1.45rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 136px;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    position: relative;
+    overflow: hidden;
+}
+
+.na-metric-card-lux:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px -4px rgba(10, 46, 35, 0.1);
+    border-color: var(--na-emerald-border);
+}
+
+.dark .na-metric-card-lux:hover {
+    box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.45);
+    border-color: #38bdf8;
+}
+
+.na-kpi-icon-wrap {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.na-metric-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--na-text-secondary);
+    white-space: nowrap;
+}
+
+.na-kpi-badge {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    line-height: 1.2;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.na-kpi-val {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(1.22rem, 1.4vw, 1.55rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--na-text);
+    margin: 0.5rem 0 0.25rem 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+
+.na-kpi-sub {
+    font-size: 0.75rem;
+    color: var(--na-text-secondary);
+    line-height: 1.45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Channel Visualizer Infographic */
+.na-channel-visualizer {
+    background: var(--na-card);
+    border: 1px solid var(--na-border);
+    border-radius: 14px;
+    padding: 1.35rem 1.65rem;
+    margin-bottom: 1.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.na-channel-progress-track {
+    width: 100%;
+    height: 10px;
+    background: #E2E8F0;
+    border-radius: 9999px;
+    overflow: hidden;
+    display: flex;
+    margin: 0.95rem 0;
+}
+
+.dark .na-channel-progress-track {
+    background: #334155;
+}
+
+.na-channel-fill-online {
+    background: linear-gradient(90deg, #0A2E23 0%, #10B981 100%);
+    height: 100%;
+    transition: width 0.6s ease;
+}
+
+.dark .na-channel-fill-online {
+    background: linear-gradient(90deg, #38BDF8 0%, #0284C7 100%);
+}
+
+.na-channel-fill-showroom {
+    background: linear-gradient(90deg, #C5A059 0%, #E2C07D 100%);
+    height: 100%;
+    transition: width 0.6s ease;
+}
+
+.na-channel-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+@media (max-width: 900px) {
+    .na-channel-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.na-channel-card {
+    background: rgba(0, 0, 0, 0.02);
+    border: 1px solid var(--na-border);
+    border-radius: 10px;
+    padding: 0.9rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    transition: all 0.15s ease;
+}
+
+.dark .na-channel-card {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.na-channel-card:hover {
+    background: rgba(10, 46, 35, 0.03);
+    border-color: var(--na-emerald-border);
+}
+
+.na-channel-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.na-channel-name {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--na-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.na-channel-amount {
+    font-size: 1.18rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.na-channel-detail {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.72rem;
+    color: var(--na-text-secondary);
+}
+
+/* Segmented Navigation Tab Pills */
+.na-tabs-pill-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--na-card-subtle);
+    border: 1px solid var(--na-border);
+    border-radius: 14px;
+    padding: 0.4rem;
+    margin-bottom: 1.75rem;
+    overflow-x: auto;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.na-tabs-pill-wrap::-webkit-scrollbar {
+    display: none;
+}
+
+.na-tab-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    border-radius: 10px;
+    font-size: 0.825rem;
+    font-weight: 700;
+    border: none;
+    background: transparent;
+    color: var(--na-text-secondary);
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+}
+
+.na-tab-pill-btn:hover {
+    background: rgba(10, 46, 35, 0.05);
+    color: var(--na-text);
+}
+
+.dark .na-tab-pill-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.na-tab-pill-btn.active {
+    background: #0A2E23;
+    color: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(10, 46, 35, 0.25);
+}
+
+.dark .na-tab-pill-btn.active {
+    background: #154D3B;
+    color: #FDFBF7;
+    border: 1px solid #C5A059;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.na-tab-pill-badge {
+    font-size: 0.6875rem;
+    font-weight: 800;
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    line-height: 1.2;
+}
+
+/* Waterfall Financial Table Styling */
+.na-waterfall-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.na-wf-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid var(--na-border);
+    font-size: 0.85rem;
+    transition: background 0.12s ease;
+}
+
+.na-wf-row:hover {
+    background: rgba(10, 46, 35, 0.02);
+}
+
+.dark .na-wf-row:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.na-wf-subtotal {
+    background: var(--na-emerald-light);
+    border: 1px solid var(--na-emerald-border);
+    border-radius: 10px;
+    padding: 0.85rem 1.15rem;
+    margin: 0.45rem 0;
+    font-weight: 800;
+    color: var(--na-emerald);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dark .na-wf-subtotal {
+    background: #143026;
+    border-color: #1E4637;
+    color: #8DE0C4;
+}
+
+.na-wf-total {
+    background: linear-gradient(135deg, #0A2E23 0%, #154D3B 100%);
+    border: 1px solid #1E4637;
+    border-radius: 12px;
+    padding: 1.15rem 1.5rem;
+    margin-top: 1rem;
+    color: #FFFFFF;
+    font-size: 1rem;
+    font-weight: 800;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 14px rgba(10, 46, 35, 0.2);
+}
+
+.dark .na-wf-total {
+    background: linear-gradient(135deg, #071E17 0%, #0E3529 100%);
+    border-color: #C5A059;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+/* Quick Account Chip */
+.na-quick-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border: 1px solid var(--na-border-strong);
+    background: var(--na-card);
+    color: var(--na-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.na-quick-chip:hover {
+    border-color: var(--na-emerald);
+    color: var(--na-emerald);
+    background: var(--na-emerald-light);
+}
+
+.dark .na-quick-chip:hover {
+    border-color: #38bdf8;
+    color: #38bdf8;
+    background: #172554;
+}
+
+.na-quick-chip.active {
+    background: #0A2E23;
+    color: #FFFFFF;
+    border-color: #0A2E23;
+}
+
+.dark .na-quick-chip.active {
+    background: #38bdf8;
+    color: #0f172a;
+    border-color: #38bdf8;
+}

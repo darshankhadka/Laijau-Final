@@ -1,0 +1,71 @@
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+!.env.production.example
+!.env.staging.example
+.env.backup
+.env.production
+.phpactor.json
+.phpunit.result.cache
+/.codex
+/.cursor/
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.zed
+/auth.json
+/node_modules
+/public/build
+/public/fonts-manifest.dev.json
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+_ide_helper.php
+Homestead.json
+Homestead.yaml
+Thumbs.db
+Nepalaura_Final_v5.2.zip
+products.pdf
+orders.pdf
+users.pdf
+Pathao_API.txt
+scratch/
+/LAIJAU
+
+# Database dumps and local SQLite
+database/*.sqlite
+database/*.sqlite-shm
+database/*.sqlite-wal
+*.sqlite
+*.sql
+*.dump
+
+# Operational & Private Data
+Real Laijau Data/
+private_docs/
+*.pdf
+*.csv
+*.xlsx
+*.xls
+
+# Backups and encrypted archives
+storage/app/backups/
+storage/app/backups/*
+release/
+*.zip
+*.tar.gz
+*.enc
+
+# Uploaded customer files & payment proofs
+storage/app/payment_proofs/*
+!storage/app/payment_proofs/.gitignore
+storage/logs/*
+!storage/logs/.gitignore
+
+# FUSE filesystem artifacts
+.fuse_hidden*

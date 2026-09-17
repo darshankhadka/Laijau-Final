@@ -1,0 +1,120 @@
+# ==============================================================================
+# Laijau ERP — Production Docker Compose Orchestration
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: production
+    image: laijau-app:latest
+    container_name: laijau_app
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    volumes:
+      - storage_data:/var/www/laijau/storage/app
+      - /var/log/laijau:/var/log/php-fpm
+    networks:
+      - laijau_network
+    depends_on:
+      - redis
+
+  web:
+    image: nginx:1.25-alpine
+    container_name: laijau_web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/laijau.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./public:/var/www/laijau/public:ro
+      - storage_data:/var/www/laijau/storage/app:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/log/nginx:/var/log/nginx
+    networks:
+      - laijau_network
+    depends_on:
+      - app
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: laijau_redis
+    restart: unless-stopped
+    command: [ "redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-laijau_redis_secret}" ]
+    volumes:
+      - redis_data:/data
+    networks:
+      - laijau_network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  worker-fulfillment:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: production
+    container_name: laijau_worker_fulfillment
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    command: [ "php", "artisan", "queue:work", "redis", "--queue=fulfillment,orders", "--tries=3", "--backoff=5,15,60", "--timeout=90", "--max-jobs=1000", "--max-time=3600" ]
+    volumes:
+      - storage_data:/var/www/laijau/storage/app
+    networks:
+      - laijau_network
+    depends_on:
+      - app
+      - redis
+
+  worker-default:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: production
+    container_name: laijau_worker_default
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    command: [ "php", "artisan", "queue:work", "redis", "--queue=emails,default", "--tries=3", "--backoff=10,30,120", "--timeout=60", "--max-jobs=1000", "--max-time=3600" ]
+    volumes:
+      - storage_data:/var/www/laijau/storage/app
+    networks:
+      - laijau_network
+    depends_on:
+      - app
+      - redis
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: production
+    container_name: laijau_scheduler
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    command: [ "php", "artisan", "schedule:work" ]
+    volumes:
+      - storage_data:/var/www/laijau/storage/app
+    networks:
+      - laijau_network
+    depends_on:
+      - app
+
+networks:
+  laijau_network:
+    driver: bridge
+
+volumes:
+  storage_data:
+    driver: local
+  redis_data:
+    driver: local

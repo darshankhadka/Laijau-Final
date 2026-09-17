@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Disallow: /checkout
+Disallow: /account
+Disallow: /orders/
+
+Sitemap: https://laijau.com/sitemap.xml

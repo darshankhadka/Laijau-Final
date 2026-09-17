@@ -1,0 +1,8 @@
+# ==============================================================================
+# Laijau ERP — Production Crontab Template
+# Install via: crontab -u www-data deploy/cron/laijau.cron
+# Or place in /etc/cron.d/laijau
+# ==============================================================================
+
+# Laravel Scheduler (Runs every minute and triggers configured console tasks)
+* * * * * cd /var/www/laijau/current && php artisan schedule:run >> /var/log/laijau/scheduler.log 2>&1

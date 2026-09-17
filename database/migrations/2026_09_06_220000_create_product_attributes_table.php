@@ -1,0 +1,370 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('product_attributes', function (Blueprint $table) {
+            $table->id();
+            $table->string('type', 50)->index(); // size, dimension, color, material, pattern, custom
+            $table->string('name', 150);
+            $table->string('code', 50)->nullable()->index();
+            $table->string('value', 255)->nullable(); // e.g., hex code #0A2E23 or measurement 5.5m x 1.15m
+            $table->string('category_group', 100)->nullable()->index(); // e.g., Apparel, Footwear, Accessories, Universal
+            $table->text('description')->nullable();
+            $table->integer('sort_order')->default(0);
+            $table->boolean('is_active')->default(true)->index();
+            $table->timestamps();
+        });
+
+        // Seed standard initial attributes & sizes for Laijau
+        $now = now();
+        $presets = [
+            // Standard Numeric Sizes (Apparel)
+            [
+                'type' => 'size',
+                'name' => '32',
+                'code' => 'SZ-32',
+                'value' => 'Waist/Chest: 32 in / 81 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard size 32 fit.',
+                'sort_order' => 1,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => '34',
+                'code' => 'SZ-34',
+                'value' => 'Waist/Chest: 34 in / 86 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard size 34 fit.',
+                'sort_order' => 2,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => '36',
+                'code' => 'SZ-36',
+                'value' => 'Waist/Chest: 36 in / 91 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard size 36 fit.',
+                'sort_order' => 3,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => '38',
+                'code' => 'SZ-38',
+                'value' => 'Waist/Chest: 38 in / 97 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard size 38 fit.',
+                'sort_order' => 4,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => '40',
+                'code' => 'SZ-40',
+                'value' => 'Waist/Chest: 40 in / 102 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard size 40 fit.',
+                'sort_order' => 5,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => '42',
+                'code' => 'SZ-42',
+                'value' => 'Waist/Chest: 42 in / 107 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard size 42 fit.',
+                'sort_order' => 6,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+
+            // Apparel Alpha Sizes
+            [
+                'type' => 'size',
+                'name' => 'XS (Extra Small)',
+                'code' => 'XS',
+                'value' => 'Chest: 32-34 in / 81-86 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard extra-small fit for apparel.',
+                'sort_order' => 10,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => 'S (Small)',
+                'code' => 'S',
+                'value' => 'Chest: 34-36 in / 86-91 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard small fit for apparel.',
+                'sort_order' => 20,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => 'M (Medium)',
+                'code' => 'M',
+                'value' => 'Chest: 36-38 in / 91-97 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard medium fit for apparel.',
+                'sort_order' => 30,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => 'L (Large)',
+                'code' => 'L',
+                'value' => 'Chest: 38-40 in / 97-102 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard large fit for apparel.',
+                'sort_order' => 40,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => 'XL (Extra Large)',
+                'code' => 'XL',
+                'value' => 'Chest: 40-42 in / 102-107 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Standard extra-large fit for apparel.',
+                'sort_order' => 50,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => 'XXL (Double Extra Large)',
+                'code' => 'XXL',
+                'value' => 'Chest: 42-45 in / 107-114 cm',
+                'category_group' => 'Apparel',
+                'description' => 'Plus standard fit for apparel.',
+                'sort_order' => 60,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'size',
+                'name' => 'Free Size / One Size',
+                'code' => 'FREE-SIZE',
+                'value' => 'Universal Fit',
+                'category_group' => 'Universal',
+                'description' => 'Relaxed drape designed to flatter all silhouettes.',
+                'sort_order' => 80,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+
+            // Accessory Dimensions
+            [
+                'type' => 'dimension',
+                'name' => 'Standard Scarf (180cm x 30cm)',
+                'code' => 'DIM-SC-18',
+                'value' => '180 cm x 30 cm',
+                'category_group' => 'Accessories',
+                'description' => 'Standard retail knit and woven scarf dimension.',
+                'sort_order' => 100,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'dimension',
+                'name' => 'Standard Wrap (2m x 1m)',
+                'code' => 'DIM-SH-20',
+                'value' => '200 cm x 100 cm (79 in x 39 in)',
+                'category_group' => 'Accessories',
+                'description' => 'Standard luxury cashmere wrap dimension.',
+                'sort_order' => 110,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'dimension',
+                'name' => 'Stole / Scarf (2m x 0.7m)',
+                'code' => 'DIM-ST-70',
+                'value' => '200 cm x 70 cm (79 in x 28 in)',
+                'category_group' => 'Shawls & Stoles',
+                'description' => 'Lightweight artisan stole dimensions.',
+                'sort_order' => 120,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+
+            // Signature Luxury Colorways
+            [
+                'type' => 'color',
+                'name' => 'Imperial Emerald',
+                'code' => 'CLR-EME',
+                'value' => '#0A2E23',
+                'category_group' => 'Heritage Palette',
+                'description' => 'Deep royal forest emerald green.',
+                'sort_order' => 200,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'color',
+                'name' => 'Crimson Red',
+                'code' => 'CLR-CRM',
+                'value' => '#9B111E',
+                'category_group' => 'Bridal & Ceremonial',
+                'description' => 'Rich ceremonial scarlet and ruby red.',
+                'sort_order' => 210,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'color',
+                'name' => 'Royal Gold',
+                'code' => 'CLR-GLD',
+                'value' => '#C5A059',
+                'category_group' => 'Zari & Metallic',
+                'description' => 'Antique golden sheen inspired by heritage zari.',
+                'sort_order' => 220,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'color',
+                'name' => 'Midnight Navy',
+                'code' => 'CLR-NVY',
+                'value' => '#0F1E36',
+                'category_group' => 'Heritage Palette',
+                'description' => 'Timeless deep twilight navy blue.',
+                'sort_order' => 230,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'color',
+                'name' => 'Ivory White',
+                'code' => 'CLR-IVR',
+                'value' => '#FDFBF7',
+                'category_group' => 'NNptrals & Pastels',
+                'description' => 'Pure refined cream and natural silk tone.',
+                'sort_order' => 240,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'color',
+                'name' => 'Plum Purple',
+                'code' => 'CLR-PLM',
+                'value' => '#4B1D3F',
+                'category_group' => 'Royal Jewel Tones',
+                'description' => 'Deep royal plum tone.',
+                'sort_order' => 250,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'color',
+                'name' => 'Rose Quartz',
+                'code' => 'CLR-RSQ',
+                'value' => '#C47B89',
+                'category_group' => 'NNptrals & Pastels',
+                'description' => 'Delicate soft blush pink.',
+                'sort_order' => 260,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'color',
+                'name' => 'Raw Silk Teal',
+                'code' => 'CLR-TEL',
+                'value' => '#184E5A',
+                'category_group' => 'Heritage Palette',
+                'description' => 'Lustrous peacock ocean teal.',
+                'sort_order' => 270,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+
+            // Handcrafted Fabric Types
+            [
+                'type' => 'material',
+                'name' => '100% Pure Mulberry Silk',
+                'code' => 'MAT-SLK',
+                'value' => 'Grade 6A Raw Mulberry Silk',
+                'category_group' => 'Pure Silks',
+                'description' => 'Unadulterated high-luster hand-reeled silk.',
+                'sort_order' => 300,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'material',
+                'name' => 'Authentic Himalayan Pashmina',
+                'code' => 'MAT-PSH',
+                'value' => 'Chyangra Mountain Goat Cashmere (14-16 micron)',
+                'category_group' => 'Cashmere & Wool',
+                'description' => 'Ethically harvested pure high-altitude cashmere.',
+                'sort_order' => 310,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'type' => 'material',
+                'name' => 'Pure Georgette & Chiffon',
+                'code' => 'MAT-GRG',
+                'value' => 'High-twist natural silk yarn',
+                'category_group' => 'Drapes & Lightweight',
+                'description' => 'Fluid, ethereal drape with subtle grain texture.',
+                'sort_order' => 320,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+        ];
+
+        DB::table('product_attributes')->insert($presets);
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('product_attributes');
+    }
+};
