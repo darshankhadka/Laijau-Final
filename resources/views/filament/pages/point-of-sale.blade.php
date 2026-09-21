@@ -1778,8 +1778,26 @@
                     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                         this.hasError = true;
                         this.errorMessage = this.isInsecureContext ?
-                            'Camera access blocked by browser: Camera requires HTTPS when accessed from a phone/remote device. Please open via HTTPS or type barcode manually.' :
-                            'Camera API is not supported on this browser or permission is disabled.';
+                            'Camera access blocked: this page must be served over HTTPS when accessed from a phone. Please use HTTPS or enter the SKU manually.' :
+                            'Camera API is not supported on this browser.';
+                        return;
+                    }
+
+                    // Probe for permission first so we get a clean NotAllowedError
+                    // instead of a generic html5-qrcode initialisation failure.
+                    try {
+                        const probe = await navigator.mediaDevices.getUserMedia({ video: true });
+                        probe.getTracks().forEach(t => t.stop());
+                    } catch (permErr) {
+                        this.hasError = true;
+                        const n = permErr?.name || '';
+                        if (n === 'NotAllowedError' || n === 'PermissionDeniedError') {
+                            this.errorMessage = 'Camera permission denied. Please allow camera access in your browser settings, then tap Retry Camera.';
+                        } else if (n === 'NotFoundError') {
+                            this.errorMessage = 'No camera detected on this device.';
+                        } else {
+                            this.errorMessage = 'Camera unavailable: ' + (permErr?.message || n);
+                        }
                         return;
                     }
 
@@ -1788,9 +1806,11 @@
                             await this.stopCamera();
                         }
 
-                        const viewport = document.getElementById("na-pos-camera-viewport");
-                        if (viewport) {
-                            viewport.innerHTML = '';
+                        // Re-create the viewport element so html5-qrcode always
+                        // gets a fresh, empty container (clear() destroys it on stop).
+                        const container = document.getElementById("na-pos-camera-viewport");
+                        if (container) {
+                            container.innerHTML = '';
                         }
 
                         this.html5QrCode = new Html5Qrcode("na-pos-camera-viewport", {
@@ -1808,6 +1828,9 @@
                         this.isScanning = true;
                         this.hasError = false;
 
+                        // NOTE: do NOT put videoConstraints or focusMode inside
+                        // the scan config — in html5-qrcode v2.x they override
+                        // the camera selection and cause OverconstrainedError.
                         const config = {
                             fps: 15,
                             qrbox: (viewfinderWidth, viewfinderHeight) => {
@@ -1816,11 +1839,7 @@
                                 const qrboxHeight = Math.floor(qrboxWidth * 0.65);
                                 return { width: Math.max(220, qrboxWidth), height: Math.max(140, qrboxHeight) };
                             },
-                            aspectRatio: 1.333334,
-                            videoConstraints: {
-                                facingMode: { ideal: this.facingMode },
-                                focusMode: "continuous"
-                            }
+                            aspectRatio: 1.333334
                         };
 
                         let lastCode = '';
@@ -1828,15 +1847,15 @@
 
                         const onScanSuccess = (decodedText) => {
                             const now = Date.now();
-                            if (decodedText === lastCode && (now - lastTime) < 1500) {
-                                return;
-                            }
+                            if (decodedText === lastCode && (now - lastTime) < 1500) return;
                             lastCode = decodedText;
                             lastTime = now;
                             this.onBarcodeDetected(decodedText);
                         };
 
                         let started = false;
+
+                        // Attempt 1: start by specific deviceId (most reliable)
                         if (this.selectedCameraId) {
                             try {
                                 await this.html5QrCode.start(
@@ -1847,10 +1866,11 @@
                                 );
                                 started = true;
                             } catch (eDevice) {
-                                console.warn("Failed starting camera by deviceId, falling back to facingMode:", eDevice);
+                                console.warn('Camera start by deviceId failed, trying facingMode:', eDevice);
                             }
                         }
 
+                        // Attempt 2: facingMode with "ideal" (soft preference)
                         if (!started) {
                             try {
                                 await this.html5QrCode.start(
@@ -1861,19 +1881,36 @@
                                 );
                                 started = true;
                             } catch (eFacing) {
-                                console.warn("Failed with ideal facingMode, falling back to default camera:", eFacing);
+                                console.warn('Camera start with ideal facingMode failed, trying exact:', eFacing);
                             }
                         }
 
+                        // Attempt 3: facingMode exact match
+                        if (!started) {
+                            try {
+                                await this.html5QrCode.start(
+                                    { facingMode: { exact: this.facingMode } },
+                                    config,
+                                    onScanSuccess,
+                                    () => {}
+                                );
+                                started = true;
+                            } catch (eExact) {
+                                console.warn('Camera start with exact facingMode failed, trying any camera:', eExact);
+                            }
+                        }
+
+                        // Attempt 4: last resort — let the browser pick any camera
                         if (!started) {
                             await this.html5QrCode.start(
-                                { facingMode: this.facingMode },
+                                { facingMode: 'environment' },
                                 config,
                                 onScanSuccess,
                                 () => {}
                             );
                         }
 
+                        // Torch detection (non-fatal)
                         try {
                             const track = this.html5QrCode.getRunningTrackCapabilities();
                             this.hasTorch = !!track?.torch;
@@ -1881,38 +1918,44 @@
                             this.hasTorch = false;
                         }
 
-                        const videoEl = document.querySelector("#na-pos-camera-viewport video");
+                        // iOS Safari needs these attributes set after stream starts
+                        const videoEl = document.querySelector('#na-pos-camera-viewport video');
                         if (videoEl) {
-                            videoEl.setAttribute("playsinline", "true");
-                            videoEl.setAttribute("webkit-playsinline", "true");
-                            videoEl.setAttribute("muted", "true");
-                            videoEl.setAttribute("autoplay", "true");
-                            videoEl.style.objectFit = "cover";
-                            videoEl.style.width = "100%";
-                            videoEl.style.height = "100%";
+                            videoEl.setAttribute('playsinline', 'true');
+                            videoEl.setAttribute('webkit-playsinline', 'true');
+                            videoEl.setAttribute('muted', 'true');
+                            videoEl.setAttribute('autoplay', 'true');
+                            videoEl.style.objectFit = 'cover';
+                            videoEl.style.width = '100%';
+                            videoEl.style.height = '100%';
                         }
 
                         if (this.cameras.length === 0) {
                             await this.loadCameras();
                         }
+
                     } catch (err) {
-                        console.error("Camera scanner start error:", err);
+                        console.error('Camera scanner start error:', err);
                         this.isScanning = false;
                         this.hasError = true;
 
                         const msg = (err?.message || '').toLowerCase();
                         const name = err?.name || '';
 
-                        if (name === 'NotAllowedError' || msg.includes('permission') || msg.includes('denied')) {
-                            this.errorMessage = 'Camera permission denied. Please allow camera access in your phone browser settings, then tap Retry Camera.';
-                        } else if (name === 'NotFoundError' || msg.includes('not found') || msg.includes('devicesnotfound')) {
-                            this.errorMessage = 'No camera device detected on this mobile phone.';
-                        } else if (name === 'NotReadableError' || msg.includes('busy') || msg.includes('in use')) {
-                            this.errorMessage = 'Camera is in use by another app. Please close other camera apps and retry.';
+                        if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || msg.includes('permission') || msg.includes('denied')) {
+                            this.errorMessage = 'Camera permission denied. Please allow camera access in your browser settings, then tap Retry Camera.';
+                        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || msg.includes('not found')) {
+                            this.errorMessage = 'No camera device found on this device.';
+                        } else if (name === 'NotReadableError' || name === 'TrackStartError' || msg.includes('busy') || msg.includes('in use')) {
+                            this.errorMessage = 'Camera is busy or in use by another app. Please close other camera apps and tap Retry.';
+                        } else if (name === 'OverconstrainedError' || msg.includes('overconstrained') || msg.includes('constraint')) {
+                            this.errorMessage = 'Camera constraint not supported on this device. Tap \'Try Other Camera\' to use a different camera.';
+                        } else if (name === 'NotSupportedError' || msg.includes('not supported')) {
+                            this.errorMessage = 'Camera not supported in this browser. Try Chrome or Safari.';
                         } else if (this.isInsecureContext) {
-                            this.errorMessage = 'Camera blocked by browser: Accessing over HTTP from another device is restricted by iOS/Chrome. Please use HTTPS or type SKU manually.';
+                            this.errorMessage = 'Camera blocked: page must be served over HTTPS when accessed from another device. Enter SKU manually below.';
                         } else {
-                            this.errorMessage = 'Unable to open camera: ' + (err?.message || 'Camera initialization failed');
+                            this.errorMessage = 'Unable to open camera: ' + (err?.message || 'initialization failed');
                         }
                     }
                 },
