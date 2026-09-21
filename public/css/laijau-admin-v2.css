@@ -1206,19 +1206,47 @@ input:focus, select:focus, textarea:focus {
         width: 100% !important;
     }
 
-    /* Touch Sizing: Minimum 44px on mobile to meet Apple HIG & Material guidelines */
-    button,
+    /* Touch Sizing: Minimum 44px on mobile to meet Apple HIG & Material guidelines.
+       NOTE: exclude .fi-tabs-item, .fi-tabs-nav buttons and similar layout/nav
+       buttons — they must keep their intrinsic width so labels don't collapse. */
     a.fi-btn,
     .fi-ta-action,
     .fi-ta-filter-trigger,
     .fi-icon-button,
-    .fi-ta-pagination-item {
+    .fi-ta-pagination-item,
+    .fi-page-header-actions button,
+    .fi-page-header-actions a {
         min-height: 44px;
         min-width: 44px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         touch-action: manipulation;
+    }
+
+    /* Filament Tabs — horizontal scroll, items must NOT shrink or wrap.
+       This fixes the "labels stacked on top of each other" bug on mobile. */
+    .fi-tabs {
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .fi-tabs::-webkit-scrollbar {
+        display: none;
+    }
+    .fi-tabs > * {
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
+    }
+    .fi-tabs-item,
+    .fi-tabs-item button,
+    .fi-tabs-item a {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+        white-space: nowrap !important;
     }
 
     /* Prevent iOS auto-zoom on field focus */
