@@ -269,6 +269,7 @@
             border-radius: 50%;
             border: 2px solid #ffffff;
             box-shadow: 0 0 0 1px #cbd5e1;
+        }
     </style>
 
     <div class="lj-order-page">

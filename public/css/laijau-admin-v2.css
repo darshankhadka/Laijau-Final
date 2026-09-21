@@ -1113,11 +1113,92 @@ input:focus, select:focus, textarea:focus {
 
     /* Modern Mobile Breadcrumb & Page Headings */
     .fi-page-header {
+        flex-wrap: wrap !important;
         margin-bottom: 1rem !important;
+        gap: 0.75rem !important;
     }
     .fi-page-header-heading {
         font-size: 1.25rem !important;
         line-height: 1.75rem !important;
+    }
+
+    /* Page header actions: wrap & stack on mobile so buttons don't overflow */
+    .fi-page-header-actions {
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+        width: 100% !important;
+    }
+    .fi-page-header-actions .fi-btn,
+    .fi-page-header-actions button {
+        flex: 1 1 auto !important;
+        justify-content: center !important;
+        min-width: 0 !important;
+        font-size: 0.8125rem !important;
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+
+    /* -----------------------------------------------------------------------
+       GLOBAL FIX: All custom lj-* header strips (Stock, Orders, Barcodes,
+       Quick Stock, Payment Reconciliation, etc.)
+       ----------------------------------------------------------------------- */
+
+    /* Generic ops/resource page header cards */
+    .lj-ops-header-card {
+        padding: 1rem !important;
+    }
+
+    /* Barcode, Quick Stock & Order detail top headers */
+    .lj-bc-header,
+    .lj-qs-header,
+    .lj-header-strip {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 0.75rem !important;
+    }
+
+    .lj-bc-header-title,
+    .lj-qs-header-title,
+    .lj-header-title {
+        font-size: 1.125rem !important;
+        width: 100% !important;
+    }
+
+    .lj-header-title-row {
+        flex-wrap: wrap !important;
+        gap: 0.4rem !important;
+    }
+
+    /* Action button rows inside custom headers */
+    .lj-bc-header > div:last-child,
+    .lj-qs-header > div:last-child,
+    .lj-ops-header-card > div:last-child,
+    .lj-actions-strip {
+        width: 100% !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 0.4rem !important;
+    }
+
+    .lj-bc-btn,
+    .lj-btn {
+        flex: 1 1 auto !important;
+        justify-content: center !important;
+        min-width: 0 !important;
+        font-size: 0.75rem !important;
+        padding: 0.4rem 0.65rem !important;
+    }
+
+    /* Quick Stock tabs: make them scrollable & not overflow */
+    .lj-qs-tabs {
+        width: 100% !important;
+        overflow-x: auto !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* Payment reconciliation balance grid: 2-col on mobile */
+    .lj-pr-balances-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
     }
 
     /* Stack Filament Grid Columns to 1 on Mobile */
