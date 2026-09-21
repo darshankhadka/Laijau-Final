@@ -69,3 +69,7 @@ storage/logs/*
 
 # FUSE filesystem artifacts
 .fuse_hidden*
+
+# Local print agent runtime configuration/state
+local_print_agent/config.json
+local_print_agent/agent_state.json

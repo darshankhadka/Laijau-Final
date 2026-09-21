@@ -21,6 +21,54 @@ class EditProduct extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('publish_storefront')
+                ->label('Publish to Storefront')
+                ->icon('heroicon-o-globe-alt')
+                ->color('success')
+                ->visible(fn () => !$this->getRecord()->is_published && $this->getRecord()->is_active)
+                ->requiresConfirmation()
+                ->modalHeading('Publish Product to Storefront')
+                ->modalDescription('Validates requirements (physical image on disk, category, valid price) and publishes to the public online store.')
+                ->action(function () {
+                    $record = $this->getRecord();
+                    $syncService = app(\App\Services\Operational\CatalogSyncService::class);
+                    $val = $syncService->validatePublicationEligibility($record);
+                    if (!$val['eligible']) {
+                        Notification::make()
+                            ->title('Cannot publish product')
+                            ->danger()
+                            ->body("Missing required details:\n• " . implode("\n• ", $val['missing']))
+                            ->persistent()
+                            ->send();
+                        return;
+                    }
+
+                    $record->update(['is_published' => true]);
+                    Notification::make()
+                        ->title('Product Published to Storefront')
+                        ->success()
+                        ->body("{$record->name} is now live on the public storefront.")
+                        ->send();
+                }),
+
+            Actions\Action::make('unpublish_storefront')
+                ->label('Unpublish from Storefront')
+                ->icon('heroicon-o-eye-slash')
+                ->color('warning')
+                ->visible(fn () => $this->getRecord()->is_published)
+                ->requiresConfirmation()
+                ->modalHeading('Unpublish from Storefront')
+                ->modalDescription('Hides this product from the online webshop while preserving full access in POS, inventory, and accounting.')
+                ->action(function () {
+                    $record = $this->getRecord();
+                    $record->update(['is_published' => false]);
+                    Notification::make()
+                        ->title('Product Unpublished')
+                        ->warning()
+                        ->body("{$record->name} hidden from webshop. Remains active in POS & Inventory.")
+                        ->send();
+                }),
+
             Actions\Action::make('preview_store')
                 ->label('Preview on Store')
                 ->icon('heroicon-o-arrow-top-right-on-square')

@@ -233,7 +233,55 @@ class ViewProduct extends ViewRecord
                     }
                 }),
 
-            // 6. VIEW ON STOREFRONT
+            // 6. PUBLISH TO STOREFRONT
+            Actions\Action::make('publish_storefront')
+                ->label('Publish to Storefront')
+                ->icon('heroicon-o-globe-alt')
+                ->color('success')
+                ->visible(fn() => !$product->is_published && $product->is_active)
+                ->requiresConfirmation()
+                ->modalHeading('Publish Product to Storefront')
+                ->modalDescription('Validates requirements (physical image on disk, category, valid price) and publishes to the public online store.')
+                ->action(function () use ($product) {
+                    $syncService = app(\App\Services\Operational\CatalogSyncService::class);
+                    $val = $syncService->validatePublicationEligibility($product);
+                    if (!$val['eligible']) {
+                        Notification::make()
+                            ->title('Cannot publish product')
+                            ->danger()
+                            ->body("Missing required details:\n• " . implode("\n• ", $val['missing']))
+                            ->persistent()
+                            ->send();
+                        return;
+                    }
+
+                    $product->update(['is_published' => true]);
+                    Notification::make()
+                        ->title('Product Published to Storefront')
+                        ->success()
+                        ->body("{$product->name} is now live on the public storefront.")
+                        ->send();
+                }),
+
+            // 7. UNPUBLISH FROM STOREFRONT
+            Actions\Action::make('unpublish_storefront')
+                ->label('Unpublish from Storefront')
+                ->icon('heroicon-o-eye-slash')
+                ->color('warning')
+                ->visible(fn() => $product->is_published)
+                ->requiresConfirmation()
+                ->modalHeading('Unpublish from Storefront')
+                ->modalDescription('Hides this product from the online webshop while preserving full access in POS, inventory, and accounting.')
+                ->action(function () use ($product) {
+                    $product->update(['is_published' => false]);
+                    Notification::make()
+                        ->title('Product Unpublished')
+                        ->warning()
+                        ->body("{$product->name} hidden from webshop. Remains active in POS & Inventory.")
+                        ->send();
+                }),
+
+            // 8. VIEW ON STOREFRONT
             Actions\Action::make('view_on_store')
                 ->label('Storefront')
                 ->icon('heroicon-o-arrow-top-right-on-square')

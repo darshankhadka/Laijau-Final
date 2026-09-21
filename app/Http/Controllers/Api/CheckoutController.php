@@ -372,6 +372,14 @@ class CheckoutController extends Controller
 
             DB::commit();
 
+            // Dispatch automatic print jobs to Showroom Print Agent (idempotent)
+            try {
+                app(\App\Services\PrintAgent\PrintAgentService::class)->queueOnlineOrderReceipt($order);
+                app(\App\Services\PrintAgent\PrintAgentService::class)->queueOnlineOrderPackingSlip($order);
+            } catch (\Throwable $printEx) {
+                Log::warning('PrintAgent queue error for online order: ' . $printEx->getMessage());
+            }
+
             // Record initial payment audit log
             PaymentAuditLog::record(
                 $order,

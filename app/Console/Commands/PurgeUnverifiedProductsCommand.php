@@ -35,7 +35,7 @@ class PurgeUnverifiedProductsCommand extends Command
             ?? Warehouse::where('type', 'showroom_pos')->first()
             ?? $centralWh;
 
-        // 1. Ensure Anchor Products exist
+        // 1. Ensure POS Anchor Product exists
         $posAnchor = Product::firstOrCreate(
             ['sku' => 'LJ-POS-ITEM'],
             [
@@ -52,29 +52,9 @@ class PurgeUnverifiedProductsCommand extends Command
             ]
         );
 
-        $waAnchor = Product::firstOrCreate(
-            ['sku' => 'LJ-WA-CATALOG'],
-            [
-                'name' => 'Laijau WhatsApp Clienteling Catalog Item',
-                'slug' => 'laijau-whatsapp-clienteling-catalog-item',
-                'type' => 'apparel',
-                'price' => 1500.00,
-                'cost_price' => 900.00,
-                'quantity' => 10000,
-                'track_quantity' => false,
-                'is_active' => true,
-                'is_published' => false,
-                'description' => 'System anchor catalog product for authentic WhatsApp Clienteling courier orders.',
-            ]
-        );
-
         $footwearCat = \App\Models\Category::where('slug', 'footwear')->first();
         if ($footwearCat) {
             $posAnchor->categories()->syncWithoutDetaching([$footwearCat->id]);
-        }
-        $apparelCat = \App\Models\Category::where('slug', 'apparel')->first();
-        if ($apparelCat) {
-            $waAnchor->categories()->syncWithoutDetaching([$apparelCat->id]);
         }
 
         // 2. Gather all verified SKUs from authoritative sources
@@ -110,7 +90,7 @@ class PurgeUnverifiedProductsCommand extends Command
             $validSkus,
             $validPdfShoes,
             $validPdfApparel,
-            ['LJ-WA-CATALOG', 'LJ-POS-ITEM', 'CW2288-111', 'DD1391-100']
+            ['LJ-POS-ITEM', 'CW2288-111', 'DD1391-100']
         ));
 
         // 3. Identify all legitimate product IDs
@@ -123,7 +103,7 @@ class PurgeUnverifiedProductsCommand extends Command
             ->pluck('id')
             ->toArray();
 
-        $legitIds = array_unique(array_merge($legitIds, [$posAnchor->id, $waAnchor->id]));
+        $legitIds = array_unique(array_merge($legitIds, [$posAnchor->id]));
 
         // 4. Identify all unverified junk product IDs
         $junkIds = Product::whereNotIn('id', $legitIds)->pluck('id')->toArray();
@@ -161,10 +141,13 @@ class PurgeUnverifiedProductsCommand extends Command
                 WHERE product_id NOT IN (" . implode(',', $legitIds) . ") OR product_id IS NULL
             ");
 
+            // Historical order items with no matched product are left as product_id = NULL
+            // (their original SKU, name, price, and quantity are preserved on the row).
             DB::affectingStatement("
                 UPDATE order_items
-                SET product_id = {$waAnchor->id}, variant_id = NULL
-                WHERE product_id NOT IN (" . implode(',', $legitIds) . ") OR product_id IS NULL
+                SET product_id = NULL, variant_id = NULL
+                WHERE product_id IS NOT NULL
+                  AND product_id NOT IN (" . implode(',', $legitIds) . ")
             ");
 
             // Delete dependent records for junk products

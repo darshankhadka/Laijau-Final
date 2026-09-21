@@ -72,17 +72,23 @@
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-800">
                                 {{ $product->categories->first()?->name ?? 'General Retail' }}
                             </span>
-                            @if($product->is_published && $product->is_active)
+                            @if($product->is_active)
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                ● Active
-                            </span>
-                            @elseif($product->is_active)
-                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-300">
-                                ○ Draft
+                                ● Catalog: Active (POS & Inventory)
                             </span>
                             @else
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-300">
-                                ⏸ Archived
+                                ⏸ Catalog: Archived
+                            </span>
+                            @endif
+
+                            @if($product->is_published && $product->is_active)
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+                                🌐 Storefront: Published & Live
+                            </span>
+                            @elseif($product->is_active)
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                🔒 Storefront: Unpublished (POS Only)
                             </span>
                             @endif
 

@@ -27,15 +27,21 @@ class ListProducts extends ListRecords
     public function getTabs(): array
     {
         return [
-            'all' => Tab::make('All Products')
+            'all' => Tab::make('All Master Products')
                 ->icon('heroicon-m-squares-2x2')
                 ->badge(Product::count()),
 
-            'published' => Tab::make('Live on Webshop')
+            'published' => Tab::make('Published (Storefront)')
                 ->icon('heroicon-m-globe-alt')
                 ->badge(Product::where('is_published', true)->where('is_active', true)->count())
                 ->badgeColor('success')
                 ->modifyQueryUsing(fn(Builder $query) => $query->where('is_published', true)->where('is_active', true)),
+
+            'drafts' => Tab::make('Unpublished (POS / Internal Only)')
+                ->icon('heroicon-m-building-storefront')
+                ->badge(Product::where('is_published', false)->where('is_active', true)->count())
+                ->badgeColor('warning')
+                ->modifyQueryUsing(fn(Builder $query) => $query->where('is_published', false)->where('is_active', true)),
 
             'in_stock' => Tab::make('In Stock')
                 ->icon('heroicon-m-check-circle')
@@ -54,12 +60,6 @@ class ListProducts extends ListRecords
                 ->badge(Product::where('quantity', '<=', 0)->count())
                 ->badgeColor('danger')
                 ->modifyQueryUsing(fn(Builder $query) => $query->where('quantity', '<=', 0)),
-
-            'drafts' => Tab::make('Draft / POS Only')
-                ->icon('heroicon-m-archive-box')
-                ->badge(Product::where('is_published', false)->count())
-                ->badgeColor('gray')
-                ->modifyQueryUsing(fn(Builder $query) => $query->where('is_published', false)),
         ];
     }
 

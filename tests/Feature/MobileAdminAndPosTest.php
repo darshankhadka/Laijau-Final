@@ -178,4 +178,73 @@ class MobileAdminAndPosTest extends TestCase
         $this->assertStringContainsString('@media (min-width: 1024px)', $blade);
         $this->assertStringContainsString('display: none !important', $blade);
     }
+
+    public function test_storefront_mobile_header_is_responsive_and_prevents_overflow(): void
+    {
+        $response = $this->get('/');
+        $response->assertStatus(200);
+
+        // Verify account and wishlist are hidden sm:flex to prevent mobile header blowout
+        $response->assertSee('hidden sm:flex items-center gap-2', false);
+        $response->assertSee('hidden sm:flex relative p-2', false);
+
+        // Verify announcement bar has overflow safety
+        $response->assertSee('min-w-0 flex-1 flex items-center gap-2 overflow-hidden', false);
+    }
+
+    public function test_pos_mobile_header_supports_full_tab_navigation_and_usb_scanner_buffer(): void
+    {
+        $posBlade = file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php'));
+
+        // Mobile topbar uses order 3 for tab navigation and nowrap topbar
+        $this->assertStringContainsString('order: 3 !important', $posBlade);
+        $this->assertStringContainsString('overflow-x: auto !important', $posBlade);
+
+        // Hardware USB barcode scanner buffer & threshold
+        $this->assertStringContainsString('barcodeBuffer', $posBlade);
+        $this->assertStringContainsString('timeDiff > 120', $posBlade);
+        $this->assertStringContainsString('handleBarcodeScan', $posBlade);
+    }
+
+    public function test_pos_and_offline_receipt_include_80mm_thermal_printing_styles_and_autoprint(): void
+    {
+        $posBlade = file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php'));
+        $receiptBlade = file_get_contents(resource_path('views/offline-receipt.blade.php'));
+
+        // Check 80mm thermal paper configuration
+        $this->assertStringContainsString('size: 80mm auto', $posBlade);
+        $this->assertStringContainsString('size: 80mm auto', $receiptBlade);
+
+        // Check autoprint support
+        $this->assertStringContainsString('sale-completed-print', $posBlade);
+        $this->assertStringContainsString('lj_pos_autoprint', $posBlade);
+        $this->assertStringContainsString("urlParams.has('autoprint')", $receiptBlade);
+    }
+
+    public function test_pos_internal_documents_display_non_tax_invoice_notice_and_tax_invoices_remain_clean(): void
+    {
+        $disclaimer = 'THIS IS NOT A TAX INVOICE. FOR LAIJAU INTERNAL USE ONLY. PLEASE RETAIN YOUR TAX INVOICE FROM THE COUNTER.';
+
+        // 1. Offline thermal receipt
+        $offlineReceipt = file_get_contents(resource_path('views/offline-receipt.blade.php'));
+        $this->assertStringContainsString($disclaimer, $offlineReceipt);
+
+        // 2. POS order receipt
+        $posReceipt = file_get_contents(resource_path('views/pos-receipt.blade.php'));
+        $this->assertStringContainsString($disclaimer, $posReceipt);
+
+        // 3. POS terminal modal
+        $posPage = file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php'));
+        $this->assertStringContainsString($disclaimer, $posPage);
+
+        // 4. Warehouse packing slip
+        $packingSlip = file_get_contents(resource_path('views/print/packing-slip.blade.php'));
+        $this->assertStringContainsString($disclaimer, $packingSlip);
+
+        // 5. Official Statutory Tax Invoice MUST NOT have the disclaimer
+        $taxInvoice = file_get_contents(resource_path('views/print/invoice.blade.php'));
+        $this->assertStringNotContainsString($disclaimer, $taxInvoice);
+        $this->assertStringContainsString('Retail Tax Invoice', $taxInvoice);
+        $this->assertStringContainsString('कर बिजक / Tax Compliant', $taxInvoice);
+    }
 }

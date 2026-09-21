@@ -31,6 +31,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/webhook',
             'payment/connectips/*',
         ]);
+        $middleware->encryptCookies(except: [
+            'laijau_attendance_device',
+        ]);
         $middleware->web(append: [
             \App\Http\Middleware\StorefrontMaintenanceMiddleware::class,
         ]);

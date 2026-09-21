@@ -469,28 +469,42 @@
                 <img src="{{ asset('images/logo-gold.png') }}" alt="Laijau" style="height: 1.875rem; width: auto;" class="hidden dark:block" onerror="this.onerror=null; this.src='{{ asset('logo-gold.png') }}';" />
             </div>
 
-            {{-- Center: Search Bar --}}
-            <div class="na-pos-search-wrap">
-                <input
-                    type="text"
-                    wire:model.live.debounce.150ms="searchQuery"
-                    wire:keydown.enter="handleBarcodeScan"
-                    placeholder="🔍 Search product, SKU or scan barcode..."
-                    class="na-pos-search-input"
-                    id="na-pos-search-field" />
-                <div style="position: absolute; left: 0.875rem; top: 0.75rem; color: #9CA3AF; pointer-events: none;">
-                    <svg style="width: 1.125rem; height: 1.125rem;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
+            {{-- Center: Search Bar + Camera Scan Button --}}
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; max-width: 520px;">
+                <div class="na-pos-search-wrap" style="flex: 1;">
+                    <input
+                        type="text"
+                        wire:model.live.debounce.150ms="searchQuery"
+                        wire:keydown.enter="handleBarcodeScan"
+                        placeholder="🔍 Search product, SKU or scan barcode..."
+                        class="na-pos-search-input"
+                        id="na-pos-search-field" />
+                    <div style="position: absolute; left: 0.875rem; top: 0.5rem; color: #9CA3AF; pointer-events: none;">
+                        <svg style="width: 1.125rem; height: 1.125rem;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                    @if(strlen($searchQuery) > 0)
+                    <button
+                        type="button"
+                        wire:click="$set('searchQuery', '')"
+                        style="position: absolute; right: 0.875rem; top: 0.5rem; color: #9CA3AF; background: none; border: none; font-size: 0.875rem; font-weight: bold; cursor: pointer;">
+                        ✕
+                    </button>
+                    @endif
                 </div>
-                @if(strlen($searchQuery) > 0)
                 <button
                     type="button"
-                    wire:click="$set('searchQuery', '')"
-                    style="position: absolute; right: 0.875rem; top: 0.75rem; color: #9CA3AF; background: none; border: none; font-size: 0.875rem; font-weight: bold; cursor: pointer;">
-                    ✕
+                    @click="$dispatch('open-pos-camera')"
+                    title="Scan Barcode with Phone Camera"
+                    style="display: inline-flex; align-items: center; gap: 0.35rem; height: 2.125rem; padding: 0 0.75rem; background: #0A2E23; color: #ffffff; border: 1px solid #0A2E23; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"
+                    class="dark:!bg-[#C5A059] dark:!text-[#111827] dark:!border-[#C5A059]">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                        <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                    <span>Camera</span>
                 </button>
-                @endif
             </div>
 
             {{-- Right: Fast Actions & Cashier Dropdown --}}
@@ -1577,5 +1591,423 @@
     </div>
     @endif
 
+    <!-- ========================================================================= -->
+    <!-- CAMERA BARCODE SCANNER MODAL -->
+    <!-- ========================================================================= -->
+    <div
+        x-data="posCameraScanner()"
+        @open-pos-camera.window="openScanner()"
+        x-show="isOpen"
+        x-cloak
+        class="na-pos-modal-backdrop"
+        style="z-index: 1000;"
+        @keydown.escape.window="closeScanner()">
+        <div class="na-pos-modal-dialog" style="max-width: 500px; width: 95%;">
+            <div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(229, 231, 235, 0.8); display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.25rem;">📷</span>
+                    <div>
+                        <h3 style="font-size: 1rem; font-weight: 800; color: #111827; margin: 0;" class="dark:!text-white">Camera Barcode Scanner</h3>
+                        <p style="font-size: 0.6875rem; color: #6B7280; margin: 0;">Point device camera at item barcode or SKU</p>
+                    </div>
+                </div>
+                <button type="button" @click="closeScanner()" style="background: none; border: none; font-size: 1.25rem; cursor: pointer; color: #6B7280;">✕</button>
+            </div>
+
+            <div style="padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                <!-- Insecure Context Warning if HTTP over LAN -->
+                <div x-show="isInsecureContext" style="background: #fffbeb; border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 0.75rem; color: #92400e; font-size: 0.75rem; line-height: 1.4;">
+                    <div style="font-weight: 800; display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.25rem;">
+                        <span>🔒</span> <span>Browser Security Restriction (HTTPS Required)</span>
+                    </div>
+                    <div>
+                        Mobile browsers (iOS Safari & Chrome) block camera access over plain HTTP when accessed via LAN IP.
+                        To use phone cameras, serve via HTTPS or an encrypted tunnel, or enter the SKU / barcode manually below.
+                    </div>
+                </div>
+
+                <!-- Camera Viewport Box -->
+                <div style="position: relative; width: 100%; min-height: 260px; background: #0f172a; border-radius: 0.5rem; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                    <div id="na-pos-camera-viewport" style="width: 100%;"></div>
+
+                    <!-- Scanning Reticle / Overlay -->
+                    <div x-show="isScanning && !hasError" style="position: absolute; inset: 0; pointer-events: none; display: flex; align-items: center; justify-content: center;">
+                        <div style="width: 240px; height: 140px; border: 2px solid #10b981; border-radius: 0.5rem; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45); position: relative;">
+                            <div style="position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #ef4444; opacity: 0.85;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Error Prompt if denied or unavailable -->
+                    <div x-show="hasError" style="position: absolute; inset: 0; background: rgba(15, 23, 42, 0.96); color: #ffffff; padding: 1.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 0.75rem; z-index: 10;">
+                        <span style="font-size: 2.25rem;">📷⚠️</span>
+                        <div style="font-size: 0.8125rem; font-weight: 700; color: #fca5a5; max-width: 320px; line-height: 1.4;" x-text="errorMessage"></div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center;">
+                            <button type="button" @click="startCamera()" style="padding: 0.45rem 0.95rem; font-size: 0.75rem; font-weight: 700; background: #0A2E23; color: #ffffff; border: none; border-radius: 0.375rem; cursor: pointer;">
+                                Retry Camera
+                            </button>
+                            <button type="button" @click="switchCamera()" style="padding: 0.45rem 0.75rem; font-size: 0.75rem; font-weight: 600; background: rgba(255,255,255,0.15); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); border-radius: 0.375rem; cursor: pointer;">
+                                Try Other Camera
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Controls Row: Camera Selection & Torch -->
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <template x-if="cameras.length > 1">
+                            <select
+                                x-model="selectedCameraId"
+                                @change="onCameraChange()"
+                                style="padding: 0.35rem 0.6rem; font-size: 0.75rem; border-radius: 0.375rem; border: 1px solid #D1D5DB; background: #ffffff; color: #111827; max-width: 170px;">
+                                <template x-for="cam in cameras" :key="cam.id">
+                                    <option :value="cam.id" x-text="cam.label || ('Camera ' + cam.id.slice(0, 5))"></option>
+                                </template>
+                            </select>
+                        </template>
+                        <template x-if="cameras.length <= 1">
+                            <button type="button" @click="switchCamera()" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; font-weight: 600; border-radius: 0.375rem; border: 1px solid #D1D5DB; background: #ffffff; color: #374151; cursor: pointer;">
+                                🔄 Switch Cam
+                            </button>
+                        </template>
+                        <button type="button" x-show="hasTorch" @click="toggleTorch()" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; font-weight: 600; border-radius: 0.375rem; border: 1px solid #D1D5DB; background: #ffffff; color: #374151; cursor: pointer;">
+                            <span x-text="torchOn ? '🔦 Light On' : '💡 Light Off'"></span>
+                        </button>
+                    </div>
+                    <div x-show="scanCount > 0" style="font-size: 0.75rem; font-weight: 700; color: #059669;">
+                        Scanned: <span x-text="scanCount"></span> items
+                    </div>
+                </div>
+
+                <!-- Last Scanned Feedback Pill -->
+                <div x-show="lastScanned" style="background: #064e3b; border: 1px solid #10b981; border-radius: 0.375rem; padding: 0.5rem 0.75rem; font-size: 0.75rem; color: #ffffff; display: flex; align-items: center; justify-content: space-between;">
+                    <span>Detected Barcode: <strong style="font-family: monospace;" x-text="lastScanned"></strong></span>
+                    <span>✓ Processed</span>
+                </div>
+
+                <!-- Manual Barcode Fallback Input -->
+                <div style="border-top: 1px solid #E5E7EB; padding-top: 0.75rem;">
+                    <label style="display: block; font-size: 0.6875rem; font-weight: 700; color: #6B7280; margin-bottom: 0.25rem;">
+                        Manual Barcode / SKU Fallback:
+                    </label>
+                    <div style="display: flex; gap: 0.35rem;">
+                        <input
+                            type="text"
+                            x-model="manualBarcode"
+                            @keydown.enter.prevent="submitManualBarcode()"
+                            placeholder="Type barcode or SKU..."
+                            style="flex: 1; height: 38px; padding: 0.35rem 0.75rem; font-size: 0.8125rem; font-family: monospace; border: 1px solid #D1D5DB; border-radius: 0.375rem;" />
+                        <button type="button" @click="submitManualBarcode()" style="padding: 0 0.85rem; font-size: 0.75rem; font-weight: 700; height: 38px; border-radius: 0.375rem; background: #0A2E23; color: #ffffff; border: none; cursor: pointer; flex-shrink: 0;">
+                            Add
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="padding: 0.75rem 1.25rem; border-top: 1px solid #E5E7EB; text-align: right;">
+                <button type="button" @click="closeScanner()" style="padding: 0.5rem 1rem; border-radius: 0.375rem; border: 1px solid #D1D5DB; background: #ffffff; font-size: 0.8125rem; font-weight: 600; cursor: pointer; color: #374151;">
+                    Close Scanner
+                </button>
+            </div>
+        </div>
     </div>
+
+    </div>
+
+    <script src="/js/html5-qrcode.min.js?v=2.3.8"></script>
+    <script>
+        function posCameraScanner() {
+            return {
+                isOpen: false,
+                isScanning: false,
+                hasError: false,
+                errorMessage: '',
+                isInsecureContext: false,
+                lastScanned: '',
+                scanCount: 0,
+                manualBarcode: '',
+                html5QrCode: null,
+                facingMode: "environment",
+                torchOn: false,
+                hasTorch: false,
+                cameras: [],
+                selectedCameraId: '',
+
+                async openScanner() {
+                    this.isOpen = true;
+                    this.hasError = false;
+                    this.errorMessage = '';
+                    this.lastScanned = '';
+                    this.manualBarcode = '';
+
+                    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    const isHttps = window.isSecureContext || window.location.protocol === 'https:';
+                    this.isInsecureContext = !isLocal && !isHttps;
+
+                    this.$nextTick(async () => {
+                        await this.loadCameras();
+                        await this.startCamera();
+                    });
+                },
+
+                async loadCameras() {
+                    if (typeof Html5Qrcode === 'undefined') return;
+                    try {
+                        const devices = await Html5Qrcode.getCameras();
+                        if (devices && devices.length > 0) {
+                            this.cameras = devices;
+                            const backCam = devices.find(d => /back|rear|environment|wide|main/i.test(d.label));
+                            if (backCam) {
+                                this.selectedCameraId = backCam.id;
+                            } else if (!this.selectedCameraId) {
+                                this.selectedCameraId = devices[devices.length - 1].id;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Could not enumerate camera devices:", e);
+                    }
+                },
+
+                async startCamera() {
+                    if (typeof Html5Qrcode === 'undefined') {
+                        this.hasError = true;
+                        this.errorMessage = 'Scanner library is loading. Please wait a moment and tap Retry.';
+                        return;
+                    }
+
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        this.hasError = true;
+                        this.errorMessage = this.isInsecureContext ?
+                            'Camera access blocked by browser: Camera requires HTTPS when accessed from a phone/remote device. Please open via HTTPS or type barcode manually.' :
+                            'Camera API is not supported on this browser or permission is disabled.';
+                        return;
+                    }
+
+                    try {
+                        if (this.html5QrCode && this.html5QrCode.isScanning) {
+                            await this.stopCamera();
+                        }
+
+                        const viewport = document.getElementById("na-pos-camera-viewport");
+                        if (viewport) {
+                            viewport.innerHTML = '';
+                        }
+
+                        this.html5QrCode = new Html5Qrcode("na-pos-camera-viewport", {
+                            verbose: false,
+                            formatsToSupport: [
+                                Html5QrcodeSupportedFormats.EAN_13,
+                                Html5QrcodeSupportedFormats.EAN_8,
+                                Html5QrcodeSupportedFormats.CODE_128,
+                                Html5QrcodeSupportedFormats.CODE_39,
+                                Html5QrcodeSupportedFormats.UPC_A,
+                                Html5QrcodeSupportedFormats.UPC_E,
+                                Html5QrcodeSupportedFormats.QR_CODE
+                            ]
+                        });
+                        this.isScanning = true;
+                        this.hasError = false;
+
+                        const config = {
+                            fps: 15,
+                            qrbox: (viewfinderWidth, viewfinderHeight) => {
+                                const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                                const qrboxWidth = Math.floor(minEdge * 0.85);
+                                const qrboxHeight = Math.floor(qrboxWidth * 0.65);
+                                return { width: Math.max(220, qrboxWidth), height: Math.max(140, qrboxHeight) };
+                            },
+                            aspectRatio: 1.333334,
+                            videoConstraints: {
+                                facingMode: { ideal: this.facingMode },
+                                focusMode: "continuous"
+                            }
+                        };
+
+                        let lastCode = '';
+                        let lastTime = 0;
+
+                        const onScanSuccess = (decodedText) => {
+                            const now = Date.now();
+                            if (decodedText === lastCode && (now - lastTime) < 1500) {
+                                return;
+                            }
+                            lastCode = decodedText;
+                            lastTime = now;
+                            this.onBarcodeDetected(decodedText);
+                        };
+
+                        let started = false;
+                        if (this.selectedCameraId) {
+                            try {
+                                await this.html5QrCode.start(
+                                    this.selectedCameraId,
+                                    config,
+                                    onScanSuccess,
+                                    () => {}
+                                );
+                                started = true;
+                            } catch (eDevice) {
+                                console.warn("Failed starting camera by deviceId, falling back to facingMode:", eDevice);
+                            }
+                        }
+
+                        if (!started) {
+                            try {
+                                await this.html5QrCode.start(
+                                    { facingMode: { ideal: this.facingMode } },
+                                    config,
+                                    onScanSuccess,
+                                    () => {}
+                                );
+                                started = true;
+                            } catch (eFacing) {
+                                console.warn("Failed with ideal facingMode, falling back to default camera:", eFacing);
+                            }
+                        }
+
+                        if (!started) {
+                            await this.html5QrCode.start(
+                                { facingMode: this.facingMode },
+                                config,
+                                onScanSuccess,
+                                () => {}
+                            );
+                        }
+
+                        try {
+                            const track = this.html5QrCode.getRunningTrackCapabilities();
+                            this.hasTorch = !!track?.torch;
+                        } catch (e) {
+                            this.hasTorch = false;
+                        }
+
+                        const videoEl = document.querySelector("#na-pos-camera-viewport video");
+                        if (videoEl) {
+                            videoEl.setAttribute("playsinline", "true");
+                            videoEl.setAttribute("webkit-playsinline", "true");
+                            videoEl.setAttribute("muted", "true");
+                            videoEl.setAttribute("autoplay", "true");
+                            videoEl.style.objectFit = "cover";
+                            videoEl.style.width = "100%";
+                            videoEl.style.height = "100%";
+                        }
+
+                        if (this.cameras.length === 0) {
+                            await this.loadCameras();
+                        }
+                    } catch (err) {
+                        console.error("Camera scanner start error:", err);
+                        this.isScanning = false;
+                        this.hasError = true;
+
+                        const msg = (err?.message || '').toLowerCase();
+                        const name = err?.name || '';
+
+                        if (name === 'NotAllowedError' || msg.includes('permission') || msg.includes('denied')) {
+                            this.errorMessage = 'Camera permission denied. Please allow camera access in your phone browser settings, then tap Retry Camera.';
+                        } else if (name === 'NotFoundError' || msg.includes('not found') || msg.includes('devicesnotfound')) {
+                            this.errorMessage = 'No camera device detected on this mobile phone.';
+                        } else if (name === 'NotReadableError' || msg.includes('busy') || msg.includes('in use')) {
+                            this.errorMessage = 'Camera is in use by another app. Please close other camera apps and retry.';
+                        } else if (this.isInsecureContext) {
+                            this.errorMessage = 'Camera blocked by browser: Accessing over HTTP from another device is restricted by iOS/Chrome. Please use HTTPS or type SKU manually.';
+                        } else {
+                            this.errorMessage = 'Unable to open camera: ' + (err?.message || 'Camera initialization failed');
+                        }
+                    }
+                },
+
+                async onCameraChange() {
+                    if (this.selectedCameraId) {
+                        await this.startCamera();
+                    }
+                },
+
+                async stopCamera() {
+                    if (this.html5QrCode) {
+                        try {
+                            if (this.html5QrCode.isScanning) {
+                                await this.html5QrCode.stop();
+                            }
+                            this.html5QrCode.clear();
+                        } catch (e) {
+                            console.warn("Error stopping camera:", e);
+                        }
+                    }
+                    this.isScanning = false;
+                },
+
+                async closeScanner() {
+                    await this.stopCamera();
+                    this.isOpen = false;
+                },
+
+                async switchCamera() {
+                    if (this.cameras.length > 1) {
+                        const currentIndex = this.cameras.findIndex(c => c.id === this.selectedCameraId);
+                        const nextIndex = (currentIndex + 1) % this.cameras.length;
+                        this.selectedCameraId = this.cameras[nextIndex].id;
+                    } else {
+                        this.facingMode = this.facingMode === "environment" ? "user" : "environment";
+                    }
+                    await this.startCamera();
+                },
+
+                async toggleTorch() {
+                    if (!this.html5QrCode || !this.hasTorch) return;
+                    try {
+                        this.torchOn = !this.torchOn;
+                        await this.html5QrCode.applyVideoConstraints({
+                            advanced: [{
+                                torch: this.torchOn
+                            }]
+                        });
+                    } catch (e) {
+                        console.warn("Torch error:", e);
+                    }
+                },
+
+                onBarcodeDetected(code) {
+                    this.playBeep();
+                    if (navigator.vibrate) {
+                        try {
+                            navigator.vibrate([60, 40, 60]);
+                        } catch (e) {}
+                    }
+                    this.lastScanned = code;
+                    this.scanCount++;
+
+                    @this.handleBarcodeScan(code);
+                },
+
+                submitManualBarcode() {
+                    if (!this.manualBarcode.trim()) return;
+                    const code = this.manualBarcode.trim();
+                    this.manualBarcode = '';
+                    this.onBarcodeDetected(code);
+                },
+
+                playBeep() {
+                    try {
+                        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                        if (!AudioCtx) return;
+                        const audioCtx = new AudioCtx();
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.value = 1900;
+                        gain.gain.value = 0.25;
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start();
+                        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.12);
+                        setTimeout(() => {
+                            osc.stop();
+                            audioCtx.close();
+                        }, 150);
+                    } catch (e) {}
+                }
+            };
+        }
+    </script>
 </x-filament-panels::page>

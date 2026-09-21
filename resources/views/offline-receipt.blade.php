@@ -178,6 +178,11 @@
         }
 
         @media print {
+            @page {
+                size: 80mm auto;
+                margin: 0;
+            }
+
             body {
                 background: #ffffff;
                 padding: 0;
@@ -190,8 +195,12 @@
             .receipt-card {
                 box-shadow: none;
                 border: none;
-                max-width: 100%;
-                padding: 0;
+                width: 80mm !important;
+                max-width: 80mm !important;
+                padding: 3mm 2mm !important;
+                margin: 0 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
         }
     </style>
@@ -226,6 +235,11 @@
             <div class="brand-address" style="font-weight: 600; color: #18181b;">VAT No: 604335148</div>
             <div class="brand-address">Bohara Tol, Kageshwori Manahara 09, Kathmandu, Nepal</div>
             <div class="brand-address">WhatsApp: 9843512095 &bull; info@laijau.com &bull; laijau.com</div>
+        </div>
+
+        {{-- Internal Document Notice --}}
+        <div class="tax-disclaimer-notice" style="border: 1.5px dashed #000000; background: #fff5f5; color: #18181b; padding: 0.45rem 0.5rem; border-radius: 0.25rem; text-align: center; font-size: 0.6875rem; font-weight: 800; line-height: 1.35; margin-bottom: 1.25rem; text-transform: uppercase; letter-spacing: 0.02em;">
+            THIS IS NOT A TAX INVOICE. FOR LAIJAU INTERNAL USE ONLY. PLEASE RETAIN YOUR TAX INVOICE FROM THE COUNTER.
         </div>
 
         {{-- Meta info --}}
@@ -358,6 +372,16 @@
         </div>
     </div>
 
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('print') || urlParams.has('autoprint') || urlParams.has('download')) {
+                setTimeout(() => {
+                    window.print();
+                }, 300);
+            }
+        });
+    </script>
 </body>
 
 </html>

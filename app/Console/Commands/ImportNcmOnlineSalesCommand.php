@@ -110,33 +110,6 @@ class ImportNcmOnlineSalesCommand extends Command
             return strcmp((string)$a['Order ID'], (string)$b['Order ID']);
         });
 
-        // 3. Ensure Anchor Catalog Product exists
-        $anchorProduct = null;
-        if (!$isDryRun) {
-            $category = Category::where('slug', 'apparel')->first()
-                ?? Category::where('slug', 'footwear')->first()
-                ?? Category::first();
-
-            $anchorProduct = Product::firstOrCreate(
-                ['sku' => 'LJ-WA-CATALOG'],
-                [
-                    'name' => 'Laijau WhatsApp Clienteling Catalog Item',
-                    'slug' => 'laijau-whatsapp-clienteling-catalog-item',
-                    'type' => 'simple',
-                    'price' => 1500.00,
-                    'quantity' => 10000,
-                    'track_quantity' => false,
-                    'is_active' => true,
-                    'is_published' => false,
-                    'description' => 'System anchor catalog product for authentic WhatsApp Clienteling courier orders.',
-                ]
-            );
-
-            if ($category && !$anchorProduct->categories()->where('categories.id', $category->id)->exists()) {
-                $anchorProduct->categories()->attach($category->id);
-            }
-        }
-
         // Metrics tracking
         $metrics = [
             'total_rows' => $totalRows,
@@ -304,11 +277,11 @@ class ImportNcmOnlineSalesCommand extends Command
                         'updated_at' => $actualDeliveredAt ?: $createdAt,
                     ]);
 
-                    // Create Order Item
+                    // Create Order Item (product_id intentionally null — raw historical record)
                     $itemName = !empty($packageDesc) ? $packageDesc : 'WhatsApp Clienteling Item';
                     OrderItem::create([
                         'order_id' => $order->id,
-                        'product_id' => $anchorProduct->id,
+                        'product_id' => null,
                         'product_name' => $itemName,
                         'sku' => 'WA-NCM-' . substr(md5($orderId), 0, 8),
                         'quantity' => 1,

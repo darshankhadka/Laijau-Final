@@ -50,9 +50,19 @@ class ProductResource extends Resource
 
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-shopping-bag';
     protected static string | \UnitEnum | null $navigationGroup = 'Products';
-    protected static ?string $navigationLabel = 'Products';
+    protected static ?string $navigationLabel = 'Product Catalog';
     protected static ?int $navigationSort = 10;
     protected static ?string $recordTitleAttribute = 'name';
+
+    public static function getModelLabel(): string
+    {
+        return 'Master Product';
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return 'Master Product Catalog';
+    }
 
     public static function getGloballySearchableAttributes(): array
     {
@@ -139,11 +149,11 @@ class ProductResource extends Resource
                                 ->searchable(),
 
                             Select::make('product_status')
-                                ->label('Product Catalog Status')
+                                ->label('Quick Catalog & Storefront Status Preset')
                                 ->options([
-                                    'active' => '● Active (Live in Storefront & POS)',
-                                    'draft' => '○ Draft (Internal Catalog Preparation)',
-                                    'archived' => '⏸ Archived (Retired from Sales)',
+                                    'active' => '● Active & Published (Live in Storefront & POS)',
+                                    'draft' => '○ Internal Only (Showroom POS & Warehouse Only / Unpublished)',
+                                    'archived' => '⏸ Archived (Retired from Sales & Catalog)',
                                 ])
                                 ->default(fn(?Product $record) => $record ? ($record->is_published && $record->is_active ? 'active' : ($record->is_active ? 'draft' : 'archived')) : 'active')
                                 ->afterStateHydrated(function ($component, ?Product $record) {
@@ -165,10 +175,8 @@ class ProductResource extends Resource
                                         $set('is_active', false);
                                     }
                                 })
+                                ->helperText('Quick preset. Fine-grained publishing toggles are also available in the right sidebar.')
                                 ->columnSpanFull(),
-
-                            Forms\Components\Hidden::make('is_published')->default(true),
-                            Forms\Components\Hidden::make('is_active')->default(true),
 
                             Toggle::make('is_new_arrival')
                                 ->label('New Arrival Badge')
@@ -459,6 +467,48 @@ class ProductResource extends Resource
                 // =========================================================
                 Group::make()->schema([
 
+                    // SIDEBAR SECTION 0: STOREFRONT PUBLISHING CONTROL
+                    Section::make('Storefront Publishing')
+                        ->icon('heroicon-o-globe-alt')
+                        ->description('Control public ecommerce publication vs internal POS/warehouse visibility.')
+                        ->schema([
+                            Toggle::make('is_published')
+                                ->label('Storefront: Published')
+                                ->helperText('When enabled, this master product is visible on the public webshop (requires verified photo & valid price). When disabled, it remains available internally for Showroom POS, inventory, and accounting.')
+                                ->default(true)
+                                ->live(),
+
+                            Toggle::make('is_active')
+                                ->label('Master Catalog Active')
+                                ->helperText('Master operational status. Disabling archives this piece across POS and ERP.')
+                                ->default(true)
+                                ->live(),
+
+                            Placeholder::make('publishing_state_indicator')
+                                ->label('Publication State')
+                                ->content(function ($get): HtmlString {
+                                    $isPublished = (bool) $get('is_published');
+                                    $isActive = (bool) $get('is_active');
+
+                                    if ($isPublished && $isActive) {
+                                        return new HtmlString("<div class='p-2.5 bg-emerald-50 text-emerald-800 font-semibold rounded-lg text-xs border border-emerald-200 flex items-center gap-2'>
+                                            <span class='w-2 h-2 rounded-full bg-emerald-500 animate-pulse'></span>
+                                            <span><strong>Storefront: Published & Live</strong> (Also active in POS & Inventory)</span>
+                                        </div>");
+                                    } elseif ($isActive) {
+                                        return new HtmlString("<div class='p-2.5 bg-amber-50 text-amber-800 font-semibold rounded-lg text-xs border border-amber-200 flex items-center gap-2'>
+                                            <span class='w-2 h-2 rounded-full bg-amber-500'></span>
+                                            <span><strong>Storefront: Unpublished</strong> (Active internally for Showroom POS & Stock)</span>
+                                        </div>");
+                                    }
+
+                                    return new HtmlString("<div class='p-2.5 bg-gray-100 text-gray-700 font-semibold rounded-lg text-xs border border-gray-300 flex items-center gap-2'>
+                                        <span class='w-2 h-2 rounded-full bg-gray-400'></span>
+                                        <span><strong>Archived</strong> (Hidden from Storefront, POS & Active Inventory)</span>
+                                    </div>");
+                                }),
+                        ])->columns(1),
+
                     // SIDEBAR SECTION 1: PRICING, COST & PROFIT ENGINE (NPR)
                     Section::make('Pricing, Cost & Profit Engine (NPR)')
                         ->icon('heroicon-o-banknotes')
@@ -739,24 +789,31 @@ class ProductResource extends Resource
                     }),
 
                 TextColumn::make('status_badge')
-                    ->label('Status')
+                    ->label('Catalog')
                     ->state(function (Product $record): string {
-                        if ($record->is_published && $record->is_active) return 'Active';
-                        if (!$record->is_published && $record->is_active) return 'Draft';
-                        return 'Archived';
+                        return $record->is_active ? 'Active' : 'Archived';
                     })
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
                         'Active' => 'success',
-                        'Draft' => 'gray',
                         default => 'slate',
-                    }),
+                    })
+                    ->tooltip('Master Catalog / Inventory & POS availability'),
 
                 TextColumn::make('public_status')
-                    ->label('Webshop')
-                    ->state(fn(Product $record): string => $record->is_published ? 'Live' : 'Hidden')
+                    ->label('Storefront')
+                    ->state(function (Product $record): string {
+                        if (!$record->is_active) {
+                            return 'Archived';
+                        }
+                        return $record->is_published ? 'Published' : 'Unpublished (POS Only)';
+                    })
                     ->badge()
-                    ->color(fn(string $state): string => $state === 'Live' ? 'success' : 'gray'),
+                    ->color(fn(string $state): string => match ($state) {
+                        'Published' => 'success',
+                        'Unpublished (POS Only)' => 'warning',
+                        default => 'gray',
+                    }),
 
                 TextColumn::make('photo_status')
                     ->label('Photo')
@@ -970,14 +1027,14 @@ class ProductResource extends Resource
                             return redirect()->to(ProductResource::getUrl('edit', ['record' => $newProduct->id]));
                         }),
 
-                    // PUBLISH TO WEBSHOP WITH VALIDATION
+                    // PUBLISH TO STOREFRONT WITH VALIDATION
                     \Filament\Actions\Action::make('publish_to_webshop')
-                        ->label('Publish to Webshop')
+                        ->label('Publish to Storefront')
                         ->icon('heroicon-o-globe-alt')
                         ->color('success')
                         ->visible(fn(Product $record) => !$record->is_published && $record->is_active)
                         ->requiresConfirmation()
-                        ->modalHeading('Publish Product to Webshop')
+                        ->modalHeading('Publish Product to Storefront')
                         ->modalDescription('Validates whether this product satisfies all public ecommerce requirements (real verified photo on disk, valid price > Rs. 0, category, and resolved SKU).')
                         ->action(function (Product $record) {
                             $syncService = app(\App\Services\Operational\CatalogSyncService::class);
@@ -994,27 +1051,27 @@ class ProductResource extends Resource
 
                             $record->update(['is_published' => true]);
                             \Filament\Notifications\Notification::make()
-                                ->title('Product Published')
+                                ->title('Product Published to Storefront')
                                 ->success()
                                 ->body("{$record->name} is now live on the public storefront.")
                                 ->send();
                         }),
 
-                    // UNPUBLISH FROM WEBSHOP (RETAIN ERP / POS)
+                    // UNPUBLISH FROM STOREFRONT (RETAIN ERP / POS)
                     \Filament\Actions\Action::make('unpublish_from_webshop')
-                        ->label('Unpublish from Webshop')
+                        ->label('Unpublish from Storefront')
                         ->icon('heroicon-o-eye-slash')
                         ->color('warning')
                         ->visible(fn(Product $record) => $record->is_published)
                         ->requiresConfirmation()
-                        ->modalHeading('Unpublish from Webshop')
+                        ->modalHeading('Unpublish from Storefront')
                         ->modalDescription('Hides this product from the public online store. It will remain active for Showroom POS, stock management, and accounting.')
                         ->action(function (Product $record) {
                             $record->update(['is_published' => false]);
                             \Filament\Notifications\Notification::make()
                                 ->title('Product Unpublished')
                                 ->warning()
-                                ->body("{$record->name} has been hidden from the webshop. It remains active for POS and inventory.")
+                                ->body("{$record->name} has been hidden from the public storefront. It remains active for POS, inventory, and accounting.")
                                 ->send();
                         }),
 
@@ -1055,6 +1112,69 @@ class ProductResource extends Resource
             ])
             ->bulkActions([
                 \Filament\Actions\BulkActionGroup::make([
+                    // Bulk Publish to Storefront
+                    \Filament\Actions\BulkAction::make('bulk_publish_storefront')
+                        ->label('Publish to Storefront')
+                        ->icon('heroicon-o-globe-alt')
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->modalHeading('Bulk Publish to Storefront')
+                        ->modalDescription('Publishes selected active products that satisfy storefront eligibility (verified photo, category, and price > 0). Any incomplete items will remain unpublished.')
+                        ->action(function (EloquentCollection $records) {
+                            $syncService = app(\App\Services\Operational\CatalogSyncService::class);
+                            $publishedCount = 0;
+                            $skippedCount = 0;
+
+                            foreach ($records as $p) {
+                                if (!$p->is_active) {
+                                    $skippedCount++;
+                                    continue;
+                                }
+                                $val = $syncService->validatePublicationEligibility($p);
+                                if ($val['eligible']) {
+                                    $p->update(['is_published' => true]);
+                                    $publishedCount++;
+                                } else {
+                                    $skippedCount++;
+                                }
+                            }
+
+                            if ($publishedCount > 0) {
+                                Notification::make()
+                                    ->title("{$publishedCount} products published to storefront")
+                                    ->success()
+                                    ->send();
+                            }
+                            if ($skippedCount > 0) {
+                                Notification::make()
+                                    ->title("{$skippedCount} products skipped (missing photo, price or inactive)")
+                                    ->warning()
+                                    ->send();
+                            }
+                        }),
+
+                    // Bulk Unpublish from Storefront
+                    \Filament\Actions\BulkAction::make('bulk_unpublish_storefront')
+                        ->label('Unpublish from Storefront')
+                        ->icon('heroicon-o-eye-slash')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Bulk Unpublish from Storefront')
+                        ->modalDescription('Hides selected products from the public storefront. All products will remain active internally for POS, inventory, and accounting.')
+                        ->action(function (EloquentCollection $records) {
+                            $count = 0;
+                            foreach ($records as $p) {
+                                if ($p->is_published) {
+                                    $p->update(['is_published' => false]);
+                                    $count++;
+                                }
+                            }
+                            Notification::make()
+                                ->title("{$count} products unpublished from storefront")
+                                ->warning()
+                                ->send();
+                        }),
+
                     // Bulk Activate
                     \Filament\Actions\BulkAction::make('bulk_activate')
                         ->label('Set Active & Live')

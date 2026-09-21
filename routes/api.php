@@ -80,3 +80,19 @@ Route::middleware(array_merge($sessionMiddleware, ['auth:web,sanctum']))->group(
     // GDPR Right to Erasure
     Route::delete('/gdpr/erasure', [GdprController::class, 'erasure']);
 });
+
+// ==============================================================================
+// LAIJAU LOCAL PRINT AGENT API (Shared-Hosting Showroom Hardware Streaming)
+// ==============================================================================
+Route::prefix('v1/print-agent')->group(function () {
+    Route::post('/pair', [\App\Http\Controllers\Api\PrintAgentController::class, 'pair'])->middleware('throttle:10,1');
+    Route::get('/config', [\App\Http\Controllers\Api\PrintAgentController::class, 'config']);
+    Route::post('/heartbeat', [\App\Http\Controllers\Api\PrintAgentController::class, 'heartbeat']);
+    Route::get('/health', [\App\Http\Controllers\Api\PrintAgentController::class, 'health']);
+    Route::get('/jobs/poll', [\App\Http\Controllers\Api\PrintAgentController::class, 'poll']);
+    Route::post('/jobs/{uuid}/status', [\App\Http\Controllers\Api\PrintAgentController::class, 'updateStatus']);
+    Route::post('/test-job', [\App\Http\Controllers\Api\PrintAgentController::class, 'testJob']);
+    Route::post('/discovered-printers', [\App\Http\Controllers\Api\PrintAgentController::class, 'reportDiscoveredPrinters']);
+});
+
+

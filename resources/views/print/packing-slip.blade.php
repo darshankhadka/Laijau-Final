@@ -219,6 +219,11 @@
             </div>
         </div>
 
+        {{-- Internal Document Notice --}}
+        <div style="border: 1.5px dashed #475569; background: #f8fafc; color: #1e293b; padding: 0.45rem 0.75rem; border-radius: 0.25rem; text-align: center; font-size: 11px; font-weight: 800; line-height: 1.35; margin-bottom: 1.25rem; text-transform: uppercase; letter-spacing: 0.02em;">
+            THIS IS NOT A TAX INVOICE. FOR LAIJAU INTERNAL USE ONLY. PLEASE RETAIN YOUR TAX INVOICE FROM THE COUNTER.
+        </div>
+
         <div class="shipping-card">
             <div>
                 <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">Ship / Handover To</div>

@@ -76,22 +76,7 @@ class ImportAuthoritativeProductMasterCommand extends Command
                     // PHASE 0: Anchor Products Baseline, Unverified Products Purge & Catalog Sanitization
                     $this->info("\n[Phase 0] Reconciling Anchor Catalog Products & Purging Unverified Products...");
                     if (!$isDryRun) {
-                        // 1. Ensure Anchor products exist with explicit properties
-                        $waAnchor = Product::firstOrCreate(
-                            ['sku' => 'LJ-WA-CATALOG'],
-                            [
-                                'name' => 'Laijau WhatsApp Clienteling Catalog Item',
-                                'slug' => 'laijau-whatsapp-clienteling-catalog-item',
-                                'type' => 'apparel',
-                                'price' => 1500.00,
-                                'cost_price' => 900.00,
-                                'quantity' => 10000,
-                                'track_quantity' => false,
-                                'is_active' => true,
-                                'is_published' => false,
-                                'description' => 'System anchor catalog product for authentic WhatsApp Clienteling courier orders.',
-                            ]
-                        );
+                        // 1. Ensure POS Anchor product exists with explicit properties
                         $posAnchor = Product::firstOrCreate(
                             ['sku' => 'LJ-POS-ITEM'],
                             [
@@ -108,7 +93,6 @@ class ImportAuthoritativeProductMasterCommand extends Command
                             ]
                         );
 
-                        $this->seenSkus['LJ-WA-CATALOG'] = true;
                         $this->seenSkus['LJ-POS-ITEM'] = true;
 
                         // 2. Unpublish and strip images from any legacy or placeholder products
@@ -304,11 +288,7 @@ class ImportAuthoritativeProductMasterCommand extends Command
             $this->warn('Could not read readyecommerce.categories: ' . $e->getMessage());
         }
 
-        // Ensure anchor products have appropriate categories attached
-        $waAnchor = Product::where('sku', 'LJ-WA-CATALOG')->first();
-        if ($waAnchor && isset($this->masterCats['apparel'])) {
-            $waAnchor->categories()->syncWithoutDetaching([$this->masterCats['apparel']->id]);
-        }
+        // Ensure POS anchor product has appropriate category attached
         $posAnchor = Product::where('sku', 'LJ-POS-ITEM')->first();
         if ($posAnchor && isset($this->masterCats['footwear'])) {
             $posAnchor->categories()->syncWithoutDetaching([$this->masterCats['footwear']->id]);
@@ -839,7 +819,6 @@ class ImportAuthoritativeProductMasterCommand extends Command
     protected function purgeUnverifiedProducts(): int
     {
         $posAnchor = Product::where('sku', 'LJ-POS-ITEM')->first();
-        $waAnchor = Product::where('sku', 'LJ-WA-CATALOG')->first();
 
         $validSkus = DB::table('readyecommerce.products')->pluck('code')->filter()->map(fn($c) => strtoupper(trim((string)$c)))->toArray();
 
@@ -873,7 +852,7 @@ class ImportAuthoritativeProductMasterCommand extends Command
             $validSkus,
             $validPdfShoes,
             $validPdfApparel,
-            ['LJ-WA-CATALOG', 'LJ-POS-ITEM', 'CW2288-111', 'DD1391-100']
+            ['LJ-POS-ITEM', 'CW2288-111', 'DD1391-100']
         ));
 
         $legitIds = Product::where(function ($q) use ($allValidSkus) {
@@ -888,9 +867,6 @@ class ImportAuthoritativeProductMasterCommand extends Command
         if ($posAnchor) {
             $legitIds[] = $posAnchor->id;
         }
-        if ($waAnchor) {
-            $legitIds[] = $waAnchor->id;
-        }
         $legitIds = array_unique($legitIds);
 
         $junkIds = Product::whereNotIn('id', $legitIds)->pluck('id')->toArray();
@@ -901,7 +877,6 @@ class ImportAuthoritativeProductMasterCommand extends Command
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
 
         $posId = $posAnchor ? $posAnchor->id : 2;
-        $waId = $waAnchor ? $waAnchor->id : 1;
 
         DB::affectingStatement("
             UPDATE offline_sale_items osi
@@ -922,10 +897,13 @@ class ImportAuthoritativeProductMasterCommand extends Command
             WHERE product_id NOT IN (" . implode(',', $legitIds) . ") OR product_id IS NULL
         ");
 
+        // Historical order items with no matched product are left as product_id = NULL
+        // (their original SKU, name, price, and quantity are preserved on the row).
         DB::affectingStatement("
             UPDATE order_items
-            SET product_id = {$waId}, variant_id = NULL
-            WHERE product_id NOT IN (" . implode(',', $legitIds) . ") OR product_id IS NULL
+            SET product_id = NULL, variant_id = NULL
+            WHERE product_id IS NOT NULL
+              AND product_id NOT IN (" . implode(',', $legitIds) . ")
         ");
 
         $junkVariantIds = DB::table('product_variants')->whereIn('product_id', $junkIds)->pluck('id')->toArray();

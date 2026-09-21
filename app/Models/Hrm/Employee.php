@@ -60,6 +60,16 @@ class Employee extends Model
         'emergency_contact_phone',
         'emergency_contact_relation',
         'notes',
+        'attendance_pin_hash',
+        'attendance_pin_set_at',
+        'attendance_failed_attempts',
+        'attendance_locked_until',
+        'attendance_access_enabled',
+    ];
+
+    protected $hidden = [
+        'cpr_encrypted',
+        'attendance_pin_hash',
     ];
 
     protected $casts = [
@@ -72,6 +82,9 @@ class Employee extends Model
         'ssf_enrolled' => 'boolean',
         'annual_leave_quota' => 'decimal:2',
         'sick_leave_quota' => 'decimal:2',
+        'attendance_pin_set_at' => 'datetime',
+        'attendance_locked_until' => 'datetime',
+        'attendance_access_enabled' => 'boolean',
     ];
 
     /**
@@ -219,4 +232,131 @@ class Employee extends Model
     {
         return $this->hasMany(PerformanceReview::class, 'employee_id');
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Attendance PWA Relationships & Methods
+    |--------------------------------------------------------------------------
+    */
+
+    public function attendanceDevices(): HasMany
+    {
+        return $this->hasMany(\App\Models\Attendance\AttendanceDevice::class, 'employee_id');
+    }
+
+    public function activeAttendanceDevices(): HasMany
+    {
+        return $this->hasMany(\App\Models\Attendance\AttendanceDevice::class, 'employee_id')
+            ->where('is_active', true)
+            ->whereNull('revoked_at');
+    }
+
+    public function attendanceEvents(): HasMany
+    {
+        return $this->hasMany(\App\Models\Attendance\AttendanceEvent::class, 'employee_id');
+    }
+
+    public function latestAttendanceEvent(): HasOne
+    {
+        return $this->hasOne(\App\Models\Attendance\AttendanceEvent::class, 'employee_id')->latestOfMany('server_recorded_at');
+    }
+
+    public function attendanceLocationUpdates(): HasMany
+    {
+        return $this->hasMany(\App\Models\Attendance\AttendanceLocationUpdate::class, 'employee_id');
+    }
+
+    public function latestLocationUpdate(): HasOne
+    {
+        return $this->hasOne(\App\Models\Attendance\AttendanceLocationUpdate::class, 'employee_id')->latestOfMany('recorded_at');
+    }
+
+    /**
+     * Check if employee has an attendance PIN configured.
+     */
+    public function hasAttendancePin(): bool
+    {
+        return !empty($this->attendance_pin_hash);
+    }
+
+    /**
+     * Set/hash a new attendance PIN.
+     */
+    public function setAttendancePin(string $pin): void
+    {
+        $this->update([
+            'attendance_pin_hash' => \Illuminate\Support\Facades\Hash::make($pin),
+            'attendance_pin_set_at' => now(),
+            'attendance_failed_attempts' => 0,
+            'attendance_locked_until' => null,
+        ]);
+    }
+
+    /**
+     * Verify attendance PIN.
+     */
+    public function verifyAttendancePin(string $pin): bool
+    {
+        if (empty($this->attendance_pin_hash)) {
+            return false;
+        }
+
+        return \Illuminate\Support\Facades\Hash::check($pin, $this->attendance_pin_hash);
+    }
+
+    /**
+     * Determine if attendance is currently locked due to failed attempts.
+     */
+    public function isAttendanceLocked(): bool
+    {
+        if (!$this->attendance_locked_until) {
+            return false;
+        }
+
+        if (now()->greaterThanOrEqualTo($this->attendance_locked_until)) {
+            $this->update([
+                'attendance_locked_until' => null,
+                'attendance_failed_attempts' => 0,
+            ]);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Record a failed PIN attempt and lock out if threshold reached.
+     */
+    public function recordFailedPinAttempt(): bool
+    {
+        $maxAttempts = \App\Models\Attendance\AttendanceSetting::get('max_failed_attempts', 5);
+        $lockoutMinutes = \App\Models\Attendance\AttendanceSetting::get('lockout_minutes', 15);
+
+        $attempts = $this->attendance_failed_attempts + 1;
+
+        if ($attempts >= $maxAttempts) {
+            $this->update([
+                'attendance_failed_attempts' => $attempts,
+                'attendance_locked_until' => now()->addMinutes($lockoutMinutes),
+            ]);
+            return true; // Locked
+        }
+
+        $this->update(['attendance_failed_attempts' => $attempts]);
+        return false;
+    }
+
+    /**
+     * Reset failed PIN attempts.
+     */
+    public function clearFailedPinAttempts(): void
+    {
+        if ($this->attendance_failed_attempts > 0 || $this->attendance_locked_until !== null) {
+            $this->update([
+                'attendance_failed_attempts' => 0,
+                'attendance_locked_until' => null,
+            ]);
+        }
+    }
 }
+

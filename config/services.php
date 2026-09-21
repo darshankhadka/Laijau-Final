@@ -83,5 +83,10 @@ return [
         'production_url' => env('CONNECTIPS_PRODUCTION_URL', 'https://login.connectips.com'),
     ],
 
+    'print_agent' => [
+        'token' => env('PRINT_AGENT_DEVICE_TOKEN', 'laijau_showroom_counter_1_secure_key'),
+        'default_station' => env('PRINT_AGENT_DEFAULT_STATION', 'showroom_counter_1'),
+    ],
+
 ];
 

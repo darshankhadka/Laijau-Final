@@ -1151,10 +1151,18 @@ class OfflineSales extends Page
             $this->clearCart();
             $this->selectWalkInCustomer();
             $this->activeModal = 'sale_success';
+            $this->dispatch('sale-completed-print');
+
+            // Dispatch print job to Local Showroom Print Agent (idempotent)
+            try {
+                app(\App\Services\PrintAgent\PrintAgentService::class)->queueOfflineSaleReceipt($sale);
+            } catch (\Throwable $printEx) {
+                \Illuminate\Support\Facades\Log::warning('PrintAgent queue error: ' . $printEx->getMessage());
+            }
 
             Notification::make()
                 ->title("Sale #{$sale->sale_number} Recorded!")
-                ->body("Inventory stock decremented & receipt generated.")
+                ->body("Inventory stock decremented & receipt queued for printing.")
                 ->success()
                 ->send();
         } catch (\Exception $e) {
@@ -1250,6 +1258,28 @@ class OfflineSales extends Page
         ];
 
         $this->activeModal = 'receipt_modal';
+        $this->dispatch('open-receipt-modal');
+    }
+
+    public function printViaAgent(int $saleId): void
+    {
+        $sale = OfflineSale::with(['items', 'warehouse', 'creator'])->find($saleId);
+        if (!$sale) return;
+
+        try {
+            app(\App\Services\PrintAgent\PrintAgentService::class)->reprintOfflineSaleReceipt($sale);
+            Notification::make()
+                ->title('Receipt Sent to Print Agent')
+                ->body("Print job queued for Showroom 80mm thermal printer.")
+                ->success()
+                ->send();
+        } catch (\Throwable $e) {
+            Notification::make()
+                ->title('Print Agent Error')
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
     }
 
     public function openVoidModal(int $saleId): void

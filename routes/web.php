@@ -44,6 +44,49 @@ Route::post('/hrm/clock-in', [\App\Http\Controllers\Hrm\EmployeePortalController
 Route::post('/hrm/clock-out', [\App\Http\Controllers\Hrm\EmployeePortalController::class, 'clockOut'])->name('hrm.clock_out');
 Route::get('/hrm/payslip/{item}', [\App\Http\Controllers\Hrm\EmployeePortalController::class, 'payslip'])->name('hrm.payslip');
 
+// =========================================================================
+// LAIJAU EMPLOYEE ATTENDANCE PWA ROUTES
+// =========================================================================
+Route::prefix('attendance')->group(function () {
+    // PWA Manifest & Service Worker
+    Route::get('/manifest.webmanifest', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'manifest'])->name('attendance.manifest');
+    Route::get('/sw.js', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'serviceWorker'])->name('attendance.sw');
+    Route::get('/offline', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'offline'])->name('attendance.offline');
+
+    // Public / Unauthenticated PWA Views
+    Route::get('/setup', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'setup'])->name('attendance.setup');
+    Route::get('/login', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'login'])->name('attendance.login');
+
+    // Secure Attendance Photo Viewer (Admin or Owning Employee)
+    Route::get('/photos/{event}', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'viewPhoto'])->name('attendance.photo');
+
+    // Public API endpoints (with rate limiting)
+    Route::prefix('api')->group(function () {
+        Route::post('/setup', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'setup'])->middleware('throttle:15,1')->name('attendance.api.setup');
+        Route::post('/auth/pin', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'authenticatePin'])->middleware('throttle:10,1')->name('attendance.api.auth.pin');
+        Route::post('/webauthn/login-options', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'webauthnLoginOptions'])->name('attendance.api.webauthn.login_options');
+        Route::post('/webauthn/login-verify', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'webauthnLoginVerify'])->name('attendance.api.webauthn.login_verify');
+    });
+
+    // Authenticated Attendance Routes (Employee & Device Session Verified)
+    Route::middleware([\App\Http\Middleware\AttendanceEmployeeAuth::class])->group(function () {
+        Route::get('/', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'dashboard'])->name('attendance.dashboard');
+
+        Route::prefix('api')->group(function () {
+            Route::post('/check-in', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'checkIn'])->name('attendance.api.check_in');
+            Route::post('/check-out', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'checkOut'])->name('attendance.api.check_out');
+            Route::post('/heartbeat', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'heartbeat'])->name('attendance.api.heartbeat');
+            Route::get('/status', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'status'])->name('attendance.api.status');
+            Route::get('/history', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'history'])->name('attendance.api.history');
+            Route::post('/auth/change-pin', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'changePin'])->name('attendance.api.auth.change_pin');
+            Route::post('/webauthn/register-options', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'webauthnRegisterOptions'])->name('attendance.api.webauthn.register_options');
+            Route::post('/webauthn/register-verify', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'webauthnRegisterVerify'])->name('attendance.api.webauthn.register_verify');
+            Route::post('/log-gps-failure', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'logGpsFailure'])->name('attendance.api.log_gps_failure');
+            Route::post('/logout', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'logout'])->name('attendance.api.logout');
+        });
+    });
+});
+
 
 // Customer Portal & Wishlist
 Route::get('/account', [StorefrontController::class, 'account'])->name('storefront.account');

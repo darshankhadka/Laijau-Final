@@ -31,15 +31,19 @@ $announcement = app(\App\Services\StoreSettingsService::class)->getAnnouncementB
     }"
     x-init="
         window.addEventListener('scroll', () => { isScrolled = window.scrollY > 20 });
+        $watch('mobileMenuOpen', val => { if (typeof $store !== 'undefined' && $store.store) $store.store.isMobileMenuOpen = val; });
+        if (typeof $store !== 'undefined' && $store.store) {
+            $watch('$store.store.isMobileMenuOpen', val => { mobileMenuOpen = val; });
+        }
     "
     class="sticky top-0 z-40 w-full bg-white transition-shadow duration-200"
     :class="isScrolled ? 'shadow-md' : 'border-b border-slate-200'">
     <!-- Top Utility Announcement Bar -->
     <div class="bg-slate-100 text-slate-700 text-[11px] font-medium py-1.5 px-4 sm:px-8 border-b border-slate-200">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
-            <div class="truncate pr-4 flex items-center gap-2">
-                <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">✓</span>
-                <span class="font-normal text-slate-600">
+            <div class="min-w-0 flex-1 flex items-center gap-2 overflow-hidden pr-2">
+                <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold shrink-0">✓</span>
+                <span class="font-normal text-slate-600 truncate text-[11px]">
                     Cash on Delivery inside <strong class="text-slate-900 font-semibold">Kathmandu Valley</strong> • Fast Courier Dispatch Across <strong class="text-slate-900 font-semibold">All 77 Districts</strong>
                 </span>
             </div>
@@ -233,7 +237,7 @@ $announcement = app(\App\Services\StoreSettingsService::class)->getAnnouncementB
             <!-- Customer Account -->
             <a
                 href="{{ route('storefront.account') }}"
-                class="flex items-center gap-2 p-2 sm:px-3 sm:py-2 text-slate-700 hover:text-blue-600 hover:bg-slate-50 rounded-xl transition-all"
+                class="hidden sm:flex items-center gap-2 p-2 sm:px-3 sm:py-2 text-slate-700 hover:text-blue-600 hover:bg-slate-50 rounded-xl transition-all"
                 title="Customer Account">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -247,7 +251,7 @@ $announcement = app(\App\Services\StoreSettingsService::class)->getAnnouncementB
             <!-- Wishlist -->
             <a
                 href="{{ route('storefront.wishlist') }}"
-                class="relative p-2 text-slate-700 hover:text-rose-600 hover:bg-slate-50 rounded-xl transition-all"
+                class="hidden sm:flex relative p-2 text-slate-700 hover:text-rose-600 hover:bg-slate-50 rounded-xl transition-all"
                 title="Wishlist"
                 aria-label="Wishlist">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

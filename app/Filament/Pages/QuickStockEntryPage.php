@@ -56,9 +56,9 @@ class QuickStockEntryPage extends Page
     /**
      * Handles Barcode Scanner input on Enter.
      */
-    public function handleScan(): void
+    public function handleScan(?string $code = null): void
     {
-        $term = trim($this->scanInput);
+        $term = trim($code ?: $this->scanInput);
         if (empty($term)) {
             return;
         }
