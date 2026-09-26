@@ -3,13 +3,16 @@
 namespace App\Filament\Pages;
 
 use App\Models\Category;
+use App\Models\Hardware\PosStation;
 use App\Models\Inventory\Warehouse;
 use App\Models\OfflineSale;
+use App\Models\Pos\PosSession;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\OfflineSaleService;
+use App\Services\Pos\PosSessionService;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
@@ -19,6 +22,9 @@ use Illuminate\Support\Str;
 
 class OfflineSales extends Page
 {
+    use OfflineSales\Concerns\InteractsWithPosSession;
+
+    protected static string $layout = 'filament-panels::components.layout.base';
     protected string $view = 'filament.pages.offline-sales';
     protected Width | string | null $maxWidth = 'full';
 
@@ -26,8 +32,26 @@ class OfflineSales extends Page
     protected static string | \UnitEnum | null $navigationGroup = 'Sales';
     protected static ?string $navigationLabel = 'POS';
     protected static ?int $navigationSort = 10;
-    protected static ?string $title = 'POS & Offline Sales';
-    protected static ?string $slug = 'offline-sales';
+    protected static ?string $title = 'POS Terminal';
+    protected static ?string $slug = 'offline-sales/POS';
+
+    public static function getRelativeRouteName(\Filament\Panel $panel): string
+    {
+        return 'offline-sales.pos';
+    }
+
+    public static function getNavigationItems(): array
+    {
+        return [
+            \Filament\Navigation\NavigationItem::make(static::getNavigationLabel())
+                ->group(static::getNavigationGroup())
+                ->icon(static::getNavigationIcon())
+                ->activeIcon(static::getActiveNavigationIcon())
+                ->sort(static::getNavigationSort())
+                ->url(url('/intadmin/offline-sales/POS'))
+                ->openUrlInNewTab(true),
+        ];
+    }
 
     public function getHeading(): string | Htmlable
     {
@@ -66,9 +90,46 @@ class OfflineSales extends Page
     // 1. Navigation View Tabs: 'new_sale' | 'history' | 'dashboard' | 'performance'
     public string $activeTab = 'new_sale';
 
-    // 2. Warehouse & Terminal State
-    public ?int $selectedWarehouseId = 2; // Default to Showroom POS (STORE-KTM-01)
+    // 2. POS Terminal, Showroom & Daily Shift Session State
+    public int $selectedStationId = 1; // Default to POS Terminal 1 (Showroom 1)
+    public ?int $selectedWarehouseId = 44; // Default to Showroom 1 (Laijau Showroom)
     public array $warehousesList = [];
+
+    // Mandatory Daily Session Float & Closing State
+    public float $openingCashInput = 0.00;
+    public string $openingNotesInput = '';
+    public float $closingCashInput = 0.00;
+    public string $closingNotesInput = '';
+    public string $closingManagerInput = '';
+    public ?int $closingSessionId = null;
+
+    // Denomination breakdown for opening count (Rs. 1000, 500, 100, 50, 20, 10, 5, coins)
+    public array $openingDenominations = [
+        '1000' => '',
+        '500'  => '',
+        '100'  => '',
+        '50'   => '',
+        '20'   => '',
+        '10'   => '',
+        '5'    => '',
+        'coins' => '',
+    ];
+
+    // Denomination breakdown for closing count (Rs. 1000, 500, 100, 50, 20, 10, 5, coins)
+    public array $closingDenominations = [
+        '1000' => '',
+        '500'  => '',
+        '100'  => '',
+        '50'   => '',
+        '20'   => '',
+        '10'   => '',
+        '5'    => '',
+        'coins' => '',
+    ];
+
+    // Mandatory Shortage / Discrepancy Reason State
+    public string $varianceReasonCode = '';
+    public string $varianceReasonText = '';
 
     // 3. Product Catalog & Search State
     public string $searchQuery = '';
@@ -111,7 +172,7 @@ class OfflineSales extends Page
     public bool $showMobileCartDrawer = false;
 
     // 9. Modals & Overlays
-    // null | 'variant_select' | 'customer_modal' | 'discount_modal' | 'checkout_modal' | 'held_sales' | 'unknown_barcode' | 'sale_detail' | 'void_modal' | 'receipt_modal' | 'sale_success'
+    // null | 'variant_select' | 'customer_modal' | 'discount_modal' | 'checkout_modal' | 'held_sales' | 'unknown_barcode' | 'sale_detail' | 'void_modal' | 'receipt_modal' | 'sale_success' | 'open_session' | 'close_session' | 'shift_report'
     public ?string $activeModal = null;
 
     // Variant Selection Modal State
@@ -140,6 +201,15 @@ class OfflineSales extends Page
     public ?array $receiptData = null;
     public ?string $whatsappUrl = null;
 
+    // 10. Upgraded POS Dashboard Analytics Filter State
+    public string $dashboardPeriod = 'today'; // 'today' | 'yesterday' | 'week' | 'month' | 'last_month' | 'year' | 'all' | 'custom'
+    public ?string $dashboardStartDate = null;
+    public ?string $dashboardEndDate = null;
+    public ?string $dashboardPaymentMethod = null;
+    public ?string $dashboardStaffName = null;
+    public ?int $dashboardWarehouseId = null;
+    public ?int $dashboardStationId = null;
+
     public int $catalogLimit = 36;
     public array $categoriesList = [];
 
@@ -149,25 +219,41 @@ class OfflineSales extends Page
         $this->customerType = 'walkin';
         $this->customerName = 'Walk-in Customer';
 
-        // Preload active categories once to prevent repeated DB queries on re-renders
-        $this->categoriesList = Category::where('is_active', true)
-            ->withCount(['products' => fn($q) => $q->where('is_active', true)])
-            ->orderBy('sort_order')
-            ->orderBy('name')
-            ->get(['id', 'name'])
-            ->toArray();
+        // Showroom & Terminal State:
+        $savedStationId = session('pos_selected_station_id');
+        $station = null;
+        if ($savedStationId) {
+            $station = PosStation::where('is_active', true)->find((int)$savedStationId);
+        }
 
-        // Load active warehouses
-        $this->warehousesList = Warehouse::where('is_active', true)
-            ->orderBy('id')
-            ->get(['id', 'name', 'code'])
-            ->toArray();
+        if (!$station) {
+            $station = PosStation::where('is_active', true)->find(1)
+                ?? PosStation::where('is_active', true)->first();
+            $this->selectedStationId = $station ? $station->id : 1;
+        } else {
+            $this->selectedStationId = $station->id;
+        }
 
-        // Default to Showroom warehouse (STORE-KTM-01 or showroom_pos), fallback to first available active warehouse
-        $curWh = Warehouse::where('code', 'STORE-KTM-01')->where('is_active', true)->first()
-            ?? Warehouse::where('type', 'showroom_pos')->where('is_active', true)->first()
-            ?? Warehouse::where('is_active', true)->first();
-        $this->selectedWarehouseId = $curWh?->id;
+        // Shared inventory warehouse (WH-KTM-MAIN / 43)
+        $this->selectedWarehouseId = $station?->warehouse_id ?? 43;
+
+        // Check terminal session state on load
+        $sessionService = app(PosSessionService::class);
+        $state = $sessionService->getTerminalSessionState($this->selectedStationId);
+
+        if ($state['state'] === 'closing_required') {
+            $this->closingSessionId = $state['session']?->id;
+            $this->activeModal = 'close_session';
+        } elseif ($state['state'] === 'active') {
+            // Today's session is active — enter POS directly without repeatedly asking
+            $this->activeModal = null;
+        } elseif (!$savedStationId) {
+            // Showroom not yet selected: prompt clean selection popup
+            $this->activeModal = 'select_showroom';
+        } else {
+            // Showroom selected, but today's session needs opening cash float
+            $this->activeModal = 'open_session';
+        }
     }
 
     public function updatedSearchQuery(): void
@@ -191,7 +277,7 @@ class OfflineSales extends Page
         if ($wh) {
             $this->selectedWarehouseId = $wh->id;
 
-            // Refresh available stock for items in cart without modifying or capping user quantities
+            // Refresh available stock for items in cart
             foreach ($this->cart as $key => $item) {
                 $stock = $this->resolveAvailableStock((int)$item['product_id'], $item['variant_id'] ? (int)$item['variant_id'] : null);
                 $this->cart[$key]['stock'] = $stock;
@@ -199,26 +285,101 @@ class OfflineSales extends Page
             $this->recalculateTotals();
 
             Notification::make()
-                ->title('Warehouse Selected')
-                ->body("Now selling from: {$wh->name} ({$wh->code})")
+                ->title('Showroom / Warehouse Selected')
+                ->body("Active location: {$wh->name} ({$wh->code})")
                 ->info()
                 ->duration(1500)
                 ->send();
         }
     }
 
+    public function setTerminal(int $stationId): void
+    {
+        $station = PosStation::where('is_active', true)->find($stationId);
+        if (!$station) {
+            Notification::make()->title('Terminal not found or inactive')->danger()->send();
+            return;
+        }
+
+        $this->selectedStationId = $station->id;
+        session(['pos_selected_station_id' => $station->id]);
+        if ($station->warehouse_id) {
+            $this->selectedWarehouseId = $station->warehouse_id;
+        }
+
+        // Refresh cart stock against shared pool
+        foreach ($this->cart as $key => $item) {
+            $stock = $this->resolveAvailableStock((int)$item['product_id'], $item['variant_id'] ? (int)$item['variant_id'] : null);
+            $this->cart[$key]['stock'] = $stock;
+        }
+        $this->recalculateTotals();
+
+        $sessionService = app(PosSessionService::class);
+        $state = $sessionService->getTerminalSessionState($this->selectedStationId);
+
+        if ($state['state'] === 'closing_required') {
+            $this->closingSessionId = $state['session']?->id;
+            $this->activeModal = 'close_session';
+            Notification::make()
+                ->title('Overdue Closing Required!')
+                ->body("{$station->name} has an unclosed session from {$state['session']?->business_date}. Please close it to proceed.")
+                ->danger()
+                ->send();
+        } elseif ($state['state'] === 'opening_required') {
+            $this->openingCashInput = 0.00;
+            $this->openingNotesInput = '';
+            $this->activeModal = 'open_session';
+            Notification::make()
+                ->title("Switched to {$station->location} · {$station->name}")
+                ->body("Opening balance required for today's session (" . $sessionService->getNepalToday() . " NPT).")
+                ->warning()
+                ->send();
+        } else {
+            $this->activeModal = null;
+            Notification::make()
+                ->title("Switched to {$station->location} · {$station->name}")
+                ->body("Today's session is active. Opening float: Rs. " . number_format($state['session']?->opening_balance ?? 0, 2))
+                ->success()
+                ->send();
+        }
+    }
+
+    public function openSelectShowroomModal(): void
+    {
+        $this->activeModal = 'select_showroom';
+    }
+
+    public function selectShowroom(string|int $stationIdOrKey): void
+    {
+        if ($stationIdOrKey === 'new' || $stationIdOrKey == 1) {
+            $stationId = 1; // Terminal 1 -> New Showroom
+        } elseif ($stationIdOrKey === 'old' || $stationIdOrKey == 151) {
+            $stationId = 151; // Terminal 2 -> Old Showroom
+        } else {
+            $stationId = (int)$stationIdOrKey;
+        }
+
+        $this->setTerminal($stationId);
+    }
+
+    /**
+     * Shared Inventory Resolution:
+     * Both POS terminals sell from the same shared central inventory pool (WH-KTM-MAIN / Warehouse 43).
+     * Showrooms do not hold separate inventory silos.
+     */
     public function resolveAvailableStock(int $productId, ?int $variantId = null): int
     {
-        // Check location-specific warehouse stock level
-        if ($this->selectedWarehouseId) {
-            $stockLevel = \App\Models\Inventory\StockLevel::where('warehouse_id', $this->selectedWarehouseId)
-                ->where('product_id', $productId)
-                ->when($variantId, fn($q) => $q->where('variant_id', $variantId), fn($q) => $q->whereNull('variant_id'))
-                ->first();
+        // Central Shared Warehouse Pool (WH-KTM-MAIN / default warehouse)
+        $defaultWh = app(\App\Services\Inventory\InventoryService::class)->getDefaultWarehouse();
+        $sharedWhId = $defaultWh?->id ?? 43;
 
-            if ($stockLevel) {
-                return (int)($stockLevel->quantity_on_hand - $stockLevel->quantity_reserved);
-            }
+        $stockLevel = \App\Models\Inventory\StockLevel::where('warehouse_id', $sharedWhId)
+            ->where('product_id', $productId)
+            ->when($variantId, fn($q) => $q->where('variant_id', $variantId), fn($q) => $q->whereNull('variant_id'))
+            ->first();
+
+        if ($stockLevel) {
+            return (int)($stockLevel->quantity_on_hand - $stockLevel->quantity_reserved);
         }
 
         // Fallback to variant or base product total quantity (preserves signed negative quantity)
@@ -226,6 +387,358 @@ class OfflineSales extends Page
             return (int)(ProductVariant::where('id', $variantId)->value('stock_quantity') ?? 0);
         }
         return (int)(Product::where('id', $productId)->value('quantity') ?? 0);
+    }
+
+    // --- POS Session Operations ---
+
+    public function openSessionModal(): void
+    {
+        $sessionService = app(PosSessionService::class);
+        $state = $sessionService->getTerminalSessionState($this->selectedStationId);
+        if ($state['state'] === 'closing_required') {
+            $this->closingSessionId = $state['session']?->id;
+            $this->activeModal = 'close_session';
+        } else {
+            $this->resetOpeningDenominations();
+            $this->activeModal = 'open_session';
+        }
+    }
+
+    public function updated($propertyName): void
+    {
+        if (str_starts_with($propertyName, 'closingDenominations')) {
+            $this->calculateClosingCashFromDenominations();
+        } elseif (str_starts_with($propertyName, 'openingDenominations')) {
+            $this->calculateOpeningCashFromDenominations();
+        }
+    }
+
+    public function updatedOpeningDenominations(): void
+    {
+        $this->calculateOpeningCashFromDenominations();
+    }
+
+    public function calculateOpeningCashFromDenominations(): void
+    {
+        $total = 0.0;
+        $multiplier = [
+            '1000' => 1000,
+            '500'  => 500,
+            '100'  => 100,
+            '50'   => 50,
+            '20'   => 20,
+            '10'   => 10,
+            '5'    => 5,
+        ];
+
+        foreach ($multiplier as $note => $val) {
+            $qty = (int)($this->openingDenominations[$note] ?? 0);
+            if ($qty > 0) {
+                $total += $qty * $val;
+            }
+        }
+
+        $coins = (float)($this->openingDenominations['coins'] ?? 0);
+        if ($coins > 0) {
+            $total += $coins;
+        }
+
+        $this->openingCashInput = round($total, 2);
+    }
+
+    public function resetOpeningDenominations(): void
+    {
+        $this->openingDenominations = [
+            '1000' => '',
+            '500'  => '',
+            '100'  => '',
+            '50'   => '',
+            '20'   => '',
+            '10'   => '',
+            '5'    => '',
+            'coins' => '',
+        ];
+        $this->openingCashInput = 0.00;
+    }
+
+    public function openCloseSessionModal(?int $sessionId = null): void
+    {
+        $this->resetErrorBag();
+        $sessionService = app(PosSessionService::class);
+        if ($sessionId) {
+            $this->closingSessionId = $sessionId;
+        } else {
+            $state = $sessionService->getTerminalSessionState($this->selectedStationId);
+            $this->closingSessionId = $state['session']?->id
+                ?? PosSession::where('pos_station_id', $this->selectedStationId)
+                    ->whereIn('status', ['open', 'closing_required'])
+                    ->latest('id')
+                    ->value('id')
+                ?? PosSession::where('pos_station_id', $this->selectedStationId)->latest('id')->value('id');
+        }
+        $this->resetClosingDenominations();
+        $this->activeModal = 'close_session';
+    }
+
+    public function updatedClosingDenominations(): void
+    {
+        $this->calculateClosingCashFromDenominations();
+    }
+
+    public function calculateClosingCashFromDenominations(): void
+    {
+        $total = 0.0;
+        $multiplier = [
+            '1000' => 1000,
+            '500'  => 500,
+            '100'  => 100,
+            '50'   => 50,
+            '20'   => 20,
+            '10'   => 10,
+            '5'    => 5,
+        ];
+
+        foreach ($multiplier as $note => $val) {
+            $qty = (int)($this->closingDenominations[$note] ?? 0);
+            if ($qty > 0) {
+                $total += $qty * $val;
+            }
+        }
+
+        $coins = (float)($this->closingDenominations['coins'] ?? 0);
+        if ($coins > 0) {
+            $total += $coins;
+        }
+
+        $this->closingCashInput = round($total, 2);
+    }
+
+    public function resetClosingDenominations(): void
+    {
+        $this->closingDenominations = [
+            '1000' => '',
+            '500'  => '',
+            '100'  => '',
+            '50'   => '',
+            '20'   => '',
+            '10'   => '',
+            '5'    => '',
+            'coins' => '',
+        ];
+        $this->closingCashInput = 0.00;
+        $this->varianceReasonCode = '';
+        $this->varianceReasonText = '';
+        $this->resetErrorBag();
+    }
+
+    public function updatedOpeningCashInput(): void
+    {
+        $this->openingCashInput = max(0.0, round((float)$this->openingCashInput, 2));
+    }
+
+    public function updatedClosingCashInput(): void
+    {
+        $this->closingCashInput = max(0.0, round((float)$this->closingCashInput, 2));
+    }
+
+    public function matchExpectedClosingCash(): void
+    {
+        $details = $this->closingSessionDetails;
+        $expected = (float)($details['calc']['expected_cash'] ?? 0);
+        $this->closingCashInput = max(0.0, round($expected, 2));
+        $this->varianceReasonCode = '';
+        $this->varianceReasonText = '';
+        $this->resetErrorBag();
+    }
+
+    public function addOpeningCashChip(float $amount): void
+    {
+        $this->openingCashInput = max(0.0, round($this->openingCashInput + $amount, 2));
+    }
+
+    public function resetOpeningCash(): void
+    {
+        $this->openingCashInput = 0.00;
+        $this->resetOpeningDenominations();
+    }
+
+    public function addClosingCashChip(float $amount): void
+    {
+        $this->closingCashInput = max(0.0, round($this->closingCashInput + $amount, 2));
+    }
+
+    public function resetClosingCash(): void
+    {
+        $this->closingCashInput = 0.00;
+        $this->resetClosingDenominations();
+    }
+
+    public function openDailySession(): void
+    {
+        $this->resetErrorBag();
+        $sessionService = app(PosSessionService::class);
+        $state = $sessionService->getTerminalSessionState($this->selectedStationId);
+
+        if ($state['state'] === 'closing_required') {
+            Notification::make()
+                ->title('Previous Session Unclosed!')
+                ->body("You must finalize closing for yesterday's session ({$state['session']?->business_date}) before opening today.")
+                ->danger()
+                ->send();
+            $this->closingSessionId = $state['session']?->id;
+            $this->activeModal = 'close_session';
+            return;
+        }
+
+        if ($this->openingCashInput < 0) {
+            $this->addError('open_session_error', 'Opening cash cannot be negative.');
+            Notification::make()->title('Opening cash cannot be negative')->danger()->send();
+            return;
+        }
+
+        try {
+            $user = Auth::user() ?? auth('admin')->user() ?? auth('web')->user() ?? User::first();
+            $session = $sessionService->openSession(
+                $this->selectedStationId,
+                (float)$this->openingCashInput,
+                $user,
+                $this->openingNotesInput ?: null
+            );
+
+            $this->activeModal = null;
+            $this->openingCashInput = 0.00;
+            $this->openingNotesInput = '';
+
+            Notification::make()
+                ->title("Session Opened: {$session->showroom_name} · {$session->terminal_name}")
+                ->body("Business Date: {$session->business_date} (NPT). Opening Float: Rs. " . number_format($session->opening_balance, 2))
+                ->success()
+                ->send();
+        } catch (\Throwable $e) {
+            $this->addError('open_session_error', $e->getMessage());
+            Notification::make()->title('Failed to open session')->body($e->getMessage())->danger()->send();
+        }
+    }
+
+    public function closeDailySession(): void
+    {
+        $this->resetErrorBag();
+        $sessionService = app(PosSessionService::class);
+        $sessionId = $this->closingSessionId;
+
+        if (!$sessionId) {
+            $state = $sessionService->getTerminalSessionState($this->selectedStationId);
+            $sessionId = $state['session']?->id;
+        }
+
+        if (!$sessionId) {
+            $sess = PosSession::where('pos_station_id', $this->selectedStationId)
+                ->whereIn('status', ['open', 'closing_required'])
+                ->latest('id')
+                ->first();
+            $sessionId = $sess?->id;
+        }
+
+        if (!$sessionId) {
+            $this->addError('close_session_error', 'No active or overdue session found to close.');
+            Notification::make()->title('No active or overdue session found to close')->warning()->send();
+            $this->activeModal = null;
+            return;
+        }
+
+        $session = PosSession::find($sessionId);
+        if (!$session || $session->status === 'closed') {
+            $this->addError('close_session_error', 'This shift session is already closed or was not found.');
+            Notification::make()->title('Session already closed or not found')->warning()->send();
+            $this->activeModal = null;
+            return;
+        }
+
+        // Recalculate variance for strict validation
+        $financials = $sessionService->calculateSessionFinancials($session);
+        $expectedCash = (float)$financials['expected_cash'];
+        $countedCash = (float)$this->closingCashInput;
+        $variance = round($countedCash - $expectedCash, 2);
+
+        // Validation for Shortage (< 0)
+        if ($variance < 0) {
+            if (empty($this->varianceReasonCode)) {
+                $this->addError('varianceReasonCode', 'Cash counted is short by Rs. ' . number_format(abs($variance), 2) . '. You must select a valid reason before closing.');
+                Notification::make()
+                    ->title('Shortage Reason Required')
+                    ->body('Cash counted is short by Rs. ' . number_format(abs($variance), 2) . '. You must select a valid reason before closing.')
+                    ->danger()
+                    ->send();
+                return;
+            }
+            if ($this->varianceReasonCode === 'other' && (empty($this->varianceReasonText) || strlen(trim($this->varianceReasonText)) < 4)) {
+                $this->addError('varianceReasonText', 'Please provide a detailed explanation (minimum 4 characters) when selecting "Other" for shortage.');
+                Notification::make()
+                    ->title('Explanation Required')
+                    ->body('Please provide a detailed explanation when selecting "Other" for shortage.')
+                    ->danger()
+                    ->send();
+                return;
+            }
+        }
+
+        // Validation for Overage (> 0)
+        if ($variance > 0) {
+            if (empty($this->varianceReasonCode) && empty($this->varianceReasonText) && empty($this->closingNotesInput)) {
+                $this->addError('varianceReasonCode', 'Cash counted exceeds expected cash by Rs. ' . number_format($variance, 2) . '. Please provide an explanation before closing.');
+                Notification::make()
+                    ->title('Overage Explanation Required')
+                    ->body('Cash counted exceeds expected cash by Rs. ' . number_format($variance, 2) . '. Please provide an explanation before closing.')
+                    ->warning()
+                    ->send();
+                return;
+            }
+        }
+
+        try {
+            $user = Auth::user() ?? auth('admin')->user() ?? auth('web')->user() ?? User::first();
+
+            // Build denominations map (only nonzero / entered)
+            $denomData = [];
+            foreach ($this->closingDenominations as $k => $v) {
+                if ($v !== '' && $v !== null && (float)$v > 0) {
+                    $denomData[$k] = (float)$v;
+                }
+            }
+
+            $closedSession = $sessionService->closeSession(
+                $session,
+                $countedCash,
+                $user,
+                $this->closingNotesInput ?: null,
+                $this->closingManagerInput ?: null,
+                $denomData,
+                $this->varianceReasonCode ?: null,
+                $this->varianceReasonText ?: null
+            );
+
+            $this->activeModal = null;
+            $this->resetClosingDenominations();
+            $this->closingNotesInput = '';
+            $this->closingManagerInput = '';
+            $this->closingSessionId = null;
+
+            $var = (float)$closedSession->cash_variance;
+            $varStr = $var == 0
+                ? 'Balanced (Rs. 0.00)'
+                : ($var > 0
+                    ? '+Rs. ' . number_format($var, 2) . ' Over'
+                    : '-Rs. ' . number_format(abs($var), 2) . ' Short');
+
+            Notification::make()
+                ->title("Shift Session Closed!")
+                ->body("Showroom: {$closedSession->showroom_name} ({$closedSession->terminal_name}). Expected: Rs. " . number_format($closedSession->expected_cash, 2) . " | Counted: Rs. " . number_format($closedSession->closing_cash_counted, 2) . " ({$varStr})")
+                ->success()
+                ->send();
+        } catch (\Throwable $e) {
+            $this->addError('close_session_error', $e->getMessage());
+            Notification::make()->title('Failed to close session')->body($e->getMessage())->danger()->send();
+        }
     }
 
     public function canViewFinancialMargins(): bool
@@ -247,6 +760,26 @@ class OfflineSales extends Page
     }
 
     // --- Computed Properties ---
+
+    public function getCurrentSessionSalesTotalProperty(): float
+    {
+        $state = app(PosSessionService::class)->getTerminalSessionState($this->selectedStationId);
+        $session = $state['session'] ?? null;
+        if (!$session) {
+            return 0.00;
+        }
+
+        return (float)OfflineSale::where('status', 'completed')
+            ->where(function ($q) use ($session) {
+                $q->where('pos_session_id', $session->id)
+                    ->orWhere(function ($sub) use ($session) {
+                        $sub->whereNull('pos_session_id')
+                            ->where('business_date', $session->business_date)
+                            ->where('pos_station_id', $session->pos_station_id);
+                    });
+            })
+            ->sum('total_amount');
+    }
 
     public function getCategoriesProperty(): array
     {
@@ -325,11 +858,12 @@ class OfflineSales extends Page
         }
 
         if (!empty($this->historyDateFilter) && $this->historyDateFilter !== 'all_time') {
+            $ktmNow = now('Asia/Kathmandu');
             match ($this->historyDateFilter) {
-                'today' => $q->whereDate('sold_at', now()->toDateString()),
-                'yesterday' => $q->whereDate('sold_at', now()->subDay()->toDateString()),
-                'this_month' => $q->whereBetween('sold_at', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()]),
-                'last_month' => $q->whereBetween('sold_at', [now()->subMonth()->startOfMonth()->toDateString(), now()->subMonth()->endOfMonth()->toDateString()]),
+                'today' => $q->whereDate('sold_at', $ktmNow->toDateString()),
+                'yesterday' => $q->whereDate('sold_at', $ktmNow->copy()->subDay()->toDateString()),
+                'this_month' => $q->whereBetween('sold_at', [$ktmNow->copy()->startOfMonth()->toDateString(), $ktmNow->copy()->endOfMonth()->toDateString()]),
+                'last_month' => $q->whereBetween('sold_at', [$ktmNow->copy()->subMonth()->startOfMonth()->toDateString(), $ktmNow->copy()->subMonth()->endOfMonth()->toDateString()]),
                 'jan_2026' => $q->whereBetween('sold_at', ['2026-01-01 00:00:00', '2026-01-31 23:59:59']),
                 'feb_2026' => $q->whereBetween('sold_at', ['2026-02-01 00:00:00', '2026-02-28 23:59:59']),
                 'mar_2026' => $q->whereBetween('sold_at', ['2026-03-01 00:00:00', '2026-03-31 23:59:59']),
@@ -346,9 +880,127 @@ class OfflineSales extends Page
         return $q->limit(100)->get()->toArray();
     }
 
+    public function getOperationalTerminalsProperty()
+    {
+        return app(PosSessionService::class)->getTerminals();
+    }
+
+    public function getActiveStationProperty(): ?PosStation
+    {
+        return PosStation::with('warehouse')->find($this->selectedStationId)
+            ?? PosStation::first();
+    }
+
+    public function getSessionStateProperty(): array
+    {
+        return app(PosSessionService::class)->getTerminalSessionState($this->selectedStationId);
+    }
+
+    public function getTodaySessionProperty(): ?PosSession
+    {
+        return app(PosSessionService::class)->getActiveSession($this->selectedStationId);
+    }
+
+    public function getOverdueSessionProperty(): ?PosSession
+    {
+        return app(PosSessionService::class)->getOverdueUnclosedSession($this->selectedStationId);
+    }
+
+    public function getAllTerminalsStatusProperty(): array
+    {
+        $terminals = app(PosSessionService::class)->getTerminals();
+        $res = [];
+        foreach ($terminals as $t) {
+            $state = app(PosSessionService::class)->getTerminalSessionState($t->id);
+            $res[] = [
+                'terminal' => $t,
+                'state' => $state['state'],
+                'can_sell' => $state['can_sell'],
+                'session' => $state['session'],
+                'overdue_session' => $state['overdue_session'] ?? null,
+            ];
+        }
+        return $res;
+    }
+
+    public function getClosingSessionDetailsProperty(): ?array
+    {
+        $sessionId = $this->closingSessionId;
+        if (!$sessionId) {
+            $stationId = $this->dashboardStationId ?? $this->selectedStationId;
+            $state = app(PosSessionService::class)->getTerminalSessionState($stationId);
+            $sessionId = $state['session']?->id
+                ?? PosSession::where('pos_station_id', $stationId)->latest('id')->value('id');
+        }
+        if (!$sessionId) {
+            return null;
+        }
+
+        $session = PosSession::with(['station', 'showroom', 'openedBy'])->find($sessionId);
+        if (!$session) {
+            return null;
+        }
+
+        $calc = app(PosSessionService::class)->calculateSessionFinancials($session);
+
+        return [
+            'session' => $session,
+            'calc' => $calc,
+        ];
+    }
+
     public function getDashboardDataProperty(): array
     {
-        return app(OfflineSaleService::class)->getDashboardMetrics();
+        $targetStationId = $this->dashboardStationId ?? $this->selectedStationId;
+
+        // If shift report modal is active, report specifically for the selected session/station
+        $targetSessionId = null;
+        if ($this->activeModal === 'shift_report') {
+            $targetSessionId = $this->todaySession?->id ?? $this->closingSessionId;
+        } elseif ($this->dashboardPeriod === 'today' && $targetStationId) {
+            $targetSessionId = $this->todaySession?->id;
+        }
+
+        return app(OfflineSaleService::class)->getDashboardMetrics([
+            'period' => $this->dashboardPeriod,
+            'start_date' => $this->dashboardStartDate,
+            'end_date' => $this->dashboardEndDate,
+            'payment_method' => $this->dashboardPaymentMethod,
+            'staff_name' => $this->dashboardStaffName,
+            'warehouse_id' => $this->dashboardWarehouseId,
+            'pos_station_id' => $targetStationId,
+            'pos_session_id' => $targetSessionId,
+        ]);
+    }
+
+    public function setDashboardPeriod(string $period): void
+    {
+        $this->dashboardPeriod = $period;
+        if ($period !== 'custom') {
+            $this->dashboardStartDate = null;
+            $this->dashboardEndDate = null;
+        }
+    }
+
+    public function resetDashboardFilters(): void
+    {
+        $this->dashboardPeriod = 'today';
+        $this->dashboardStartDate = null;
+        $this->dashboardEndDate = null;
+        $this->dashboardPaymentMethod = null;
+        $this->dashboardStaffName = null;
+        $this->dashboardWarehouseId = null;
+        $this->dashboardStationId = null;
+    }
+
+    public function getDashboardStaffListProperty(): array
+    {
+        return OfflineSale::whereNotNull('staff_name')
+            ->where('staff_name', '!=', '')
+            ->distinct()
+            ->orderBy('staff_name')
+            ->pluck('staff_name')
+            ->toArray();
     }
 
     public function getProductPerformanceDataProperty(): array
@@ -373,6 +1025,27 @@ class OfflineSales extends Page
 
     public function openModal(string $modal): void
     {
+        if ($modal === 'checkout_modal') {
+            $state = app(PosSessionService::class)->getTerminalSessionState($this->selectedStationId);
+            if (!$state['can_sell']) {
+                if ($state['state'] === 'closing_required') {
+                    $this->closingSessionId = $state['session']?->id;
+                    $this->activeModal = 'close_session';
+                    Notification::make()->title('Closing Required Before Checkout')->body('Overdue session must be closed first.')->danger()->send();
+                } else {
+                    $this->activeModal = 'open_session';
+                    Notification::make()->title('Opening Balance Required')->body('Enter opening cash balance before checking out.')->warning()->send();
+                }
+                return;
+            }
+        }
+        if ($modal === 'shift_report') {
+            if ($this->activeModal !== 'close_session' || !$this->closingSessionId) {
+                $stationId = $this->dashboardStationId ?? $this->selectedStationId;
+                $state = app(PosSessionService::class)->getTerminalSessionState($stationId);
+                $this->closingSessionId = $state['session']?->id;
+            }
+        }
         $this->activeModal = $modal;
     }
 
@@ -387,6 +1060,28 @@ class OfflineSales extends Page
 
     public function handleProductClick(int $productId): void
     {
+        $sessionService = app(PosSessionService::class);
+        $state = $sessionService->getTerminalSessionState($this->selectedStationId);
+        if (!$state['can_sell']) {
+            if ($state['state'] === 'closing_required') {
+                $this->closingSessionId = $state['session']?->id;
+                $this->activeModal = 'close_session';
+                Notification::make()
+                    ->title('Overdue Closing Required')
+                    ->body("Terminal cannot accept sales until the unclosed session from {$state['session']?->business_date} is closed.")
+                    ->danger()
+                    ->send();
+            } else {
+                $this->activeModal = 'open_session';
+                Notification::make()
+                    ->title('Opening Balance Required')
+                    ->body("Please enter the opening cash balance for today's session to begin selling.")
+                    ->warning()
+                    ->send();
+            }
+            return;
+        }
+
         $product = Product::with(['variants' => fn($q) => $q->where('is_active', true)])->find($productId);
         if (!$product) return;
 
@@ -457,6 +1152,28 @@ class OfflineSales extends Page
 
     public function addToCart(int $productId, ?int $variantId = null, int $quantity = 1): void
     {
+        $sessionService = app(PosSessionService::class);
+        $state = $sessionService->getTerminalSessionState($this->selectedStationId);
+        if (!$state['can_sell']) {
+            if ($state['state'] === 'closing_required') {
+                $this->closingSessionId = $state['session']?->id;
+                $this->activeModal = 'close_session';
+                Notification::make()
+                    ->title('Overdue Closing Required')
+                    ->body("Terminal cannot accept sales until the unclosed session from {$state['session']?->business_date} is closed.")
+                    ->danger()
+                    ->send();
+            } else {
+                $this->activeModal = 'open_session';
+                Notification::make()
+                    ->title('Opening Balance Required')
+                    ->body("Please enter the opening cash balance for today's session to begin selling.")
+                    ->warning()
+                    ->send();
+            }
+            return;
+        }
+
         $product = Product::find($productId);
         if (!$product || !$product->is_active) {
             Notification::make()
@@ -1041,6 +1758,25 @@ class OfflineSales extends Page
             return;
         }
 
+        // Strict POS Daily Session Verification
+        $sessionService = app(PosSessionService::class);
+        $sessionState = $sessionService->getTerminalSessionState($this->selectedStationId);
+        if (!$sessionState['can_sell'] || !$sessionState['session']) {
+            Notification::make()
+                ->title('Active Session Required')
+                ->body('An active daily session with opening balance is required to record sales.')
+                ->danger()
+                ->send();
+            if ($sessionState['state'] === 'closing_required') {
+                $this->closingSessionId = $sessionState['session']?->id;
+                $this->activeModal = 'close_session';
+            } else {
+                $this->activeModal = 'open_session';
+            }
+            return;
+        }
+        $activeSession = $sessionState['session'];
+
         $totals = $this->calculateTotals();
 
         // Cash Tender Validation: cannot complete if cash received is less than total
@@ -1072,6 +1808,9 @@ class OfflineSales extends Page
                 'customer_notes' => $this->customerNotes,
                 'internal_notes' => $this->internalNotes,
                 'warehouse_id' => ($this->selectedWarehouseId && Warehouse::where('id', $this->selectedWarehouseId)->exists()) ? $this->selectedWarehouseId : (Warehouse::first()?->id ?? null),
+                'pos_session_id' => $activeSession->id,
+                'pos_station_id' => $this->selectedStationId,
+                'business_date' => $activeSession->business_date,
                 'cash_received' => $this->paymentMethod === 'cash' ? max($this->cashReceived, $totals['total']) : null,
                 'change_given' => $this->paymentMethod === 'cash' ? max(0.00, round($this->cashReceived - $totals['total'], 2)) : 0.00,
             ];
@@ -1119,11 +1858,14 @@ class OfflineSales extends Page
             $this->receiptData = [
                 'id' => $sale->id,
                 'sale_number' => $sale->sale_number,
-                'date' => $sale->sold_at ? $sale->sold_at->format('d M Y') : now()->format('d M Y'),
-                'time' => $sale->sold_at ? $sale->sold_at->format('h:i A') : now()->format('h:i A'),
+                'date' => $sale->sold_at ? $sale->sold_at->timezone('Asia/Kathmandu')->format('d M Y') : now('Asia/Kathmandu')->format('d M Y'),
+                'time' => $sale->sold_at ? $sale->sold_at->timezone('Asia/Kathmandu')->format('h:i A') : now('Asia/Kathmandu')->format('h:i A'),
                 'cashier_name' => $cashier ? $cashier->name : 'Showroom Cashier',
                 'warehouse_name' => $wh ? $wh->name : 'Laijau Showroom',
                 'warehouse_code' => $wh ? $wh->code : 'STORE-KTM-01',
+                'terminal_name' => $activeSession->station?->name ?? 'POS Terminal 1',
+                'showroom_name' => $activeSession->showroom?->name ?? 'Laijau Showroom',
+                'business_date' => $activeSession->business_date,
                 'customer_name' => $sale->customer_name,
                 'customer_phone' => $sale->customer_phone,
                 'payment_method' => ucfirst(str_replace('_', ' ', $sale->payment_method)),
@@ -1240,8 +1982,8 @@ class OfflineSales extends Page
         $this->receiptData = [
             'id' => $sale->id,
             'sale_number' => $sale->sale_number,
-            'date' => $sale->sold_at ? $sale->sold_at->format('d M Y') : now()->format('d M Y'),
-            'time' => $sale->sold_at ? $sale->sold_at->format('h:i A') : now()->format('h:i A'),
+            'date' => $sale->sold_at ? $sale->sold_at->timezone('Asia/Kathmandu')->format('d M Y') : now('Asia/Kathmandu')->format('d M Y'),
+            'time' => $sale->sold_at ? $sale->sold_at->timezone('Asia/Kathmandu')->format('h:i A') : now('Asia/Kathmandu')->format('h:i A'),
             'cashier_name' => $sale->creator ? $sale->creator->name : ($sale->staff_name ?? 'Showroom Cashier'),
             'warehouse_name' => $sale->warehouse ? $sale->warehouse->name : 'Laijau Showroom',
             'warehouse_code' => $sale->warehouse ? $sale->warehouse->code : 'STORE-KTM-01',

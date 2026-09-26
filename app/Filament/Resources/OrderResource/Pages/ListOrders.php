@@ -78,7 +78,8 @@ class ListOrders extends ListRecords
                 ->label('Point of Sale')
                 ->icon('heroicon-o-computer-desktop')
                 ->color('primary')
-                ->url(route('filament.admin.pages.point-of-sale')),
+                ->url(url('/intadmin/offline-sales/POS'))
+                ->openUrlInNewTab(true),
         ];
     }
 }

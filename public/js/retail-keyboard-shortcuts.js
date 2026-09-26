@@ -11,31 +11,31 @@
             return;
         }
 
-        // F2: Point of Sale (POS)
+        // F2: Point of Sale (POS) - Opens dedicated fullscreen POS in a new tab
         if (e.key === 'F2') {
             e.preventDefault();
-            window.location.href = '/admin/offline-sales';
+            window.open('/intadmin/offline-sales/POS', '_blank');
             return;
         }
 
         // F3: Quick Stock Entry
         if (e.key === 'F3') {
             e.preventDefault();
-            window.location.href = '/admin/quick-stock-entry';
+            window.location.href = '/intadmin/quick-stock-entry';
             return;
         }
 
         // F4: Products Module
         if (e.key === 'F4') {
             e.preventDefault();
-            window.location.href = '/admin/products';
+            window.location.href = '/intadmin/products';
             return;
         }
 
         // Alt + F5 or Alt + O: Orders Module
         if ((e.key === 'F5' && e.altKey) || (e.altKey && (e.key === 'o' || e.key === 'O'))) {
             e.preventDefault();
-            window.location.href = '/admin/orders';
+            window.location.href = '/intadmin/orders';
             return;
         }
 
@@ -47,8 +47,8 @@
             }
         }
 
-        // Specialized POS & Offline Sales Shortcuts (When on /admin/offline-sales)
-        if (window.location.pathname.includes('/admin/offline-sales')) {
+        // Specialized POS & Offline Sales Shortcuts (When on /intadmin/offline-sales or /admin/offline-sales)
+        if (window.location.pathname.includes('/offline-sales')) {
             // F8: Trigger Payment & Checkout
             if (e.key === 'F8') {
                 e.preventDefault();

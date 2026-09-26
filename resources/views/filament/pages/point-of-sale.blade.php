@@ -1642,10 +1642,10 @@
                         <span style="font-size: 2.25rem;">📷⚠️</span>
                         <div style="font-size: 0.8125rem; font-weight: 700; color: #fca5a5; max-width: 320px; line-height: 1.4;" x-text="errorMessage"></div>
                         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center;">
-                            <button type="button" @click="startCamera()" style="padding: 0.45rem 0.95rem; font-size: 0.75rem; font-weight: 700; background: #0A2E23; color: #ffffff; border: none; border-radius: 0.375rem; cursor: pointer;">
+                            <button type="button" x-show="errorType !== 'unsupported' && errorType !== 'notfound'" @click="retryCamera()" style="padding: 0.45rem 0.95rem; font-size: 0.75rem; font-weight: 700; background: #0A2E23; color: #ffffff; border: none; border-radius: 0.375rem; cursor: pointer;">
                                 Retry Camera
                             </button>
-                            <button type="button" @click="switchCamera()" style="padding: 0.45rem 0.75rem; font-size: 0.75rem; font-weight: 600; background: rgba(255,255,255,0.15); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); border-radius: 0.375rem; cursor: pointer;">
+                            <button type="button" x-show="cameras.length > 1 || errorType === 'overconstrained'" @click="switchCamera()" style="padding: 0.45rem 0.75rem; font-size: 0.75rem; font-weight: 600; background: rgba(255,255,255,0.15); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); border-radius: 0.375rem; cursor: pointer;">
                                 Try Other Camera
                             </button>
                         </div>
@@ -1720,7 +1720,9 @@
             return {
                 isOpen: false,
                 isScanning: false,
+                isStarting: false,
                 hasError: false,
+                errorType: 'generic',
                 errorMessage: '',
                 isInsecureContext: false,
                 lastScanned: '',
@@ -1733,9 +1735,15 @@
                 cameras: [],
                 selectedCameraId: '',
 
+                init() {
+                    window.addEventListener('beforeunload', () => this.stopCamera());
+                    window.addEventListener('pagehide', () => this.stopCamera());
+                },
+
                 async openScanner() {
                     this.isOpen = true;
                     this.hasError = false;
+                    this.errorType = 'generic';
                     this.errorMessage = '';
                     this.lastScanned = '';
                     this.manualBarcode = '';
@@ -1745,7 +1753,6 @@
                     this.isInsecureContext = !isLocal && !isHttps;
 
                     this.$nextTick(async () => {
-                        await this.loadCameras();
                         await this.startCamera();
                     });
                 },
@@ -1756,11 +1763,11 @@
                         const devices = await Html5Qrcode.getCameras();
                         if (devices && devices.length > 0) {
                             this.cameras = devices;
-                            const backCam = devices.find(d => /back|rear|environment|wide|main/i.test(d.label));
-                            if (backCam) {
-                                this.selectedCameraId = backCam.id;
-                            } else if (!this.selectedCameraId) {
-                                this.selectedCameraId = devices[devices.length - 1].id;
+                            if (!this.selectedCameraId) {
+                                const backCam = devices.find(d => /back|rear|environment|wide|main/i.test(d.label));
+                                if (backCam) {
+                                    this.selectedCameraId = backCam.id;
+                                }
                             }
                         }
                     } catch (e) {
@@ -1768,52 +1775,41 @@
                     }
                 },
 
-                async startCamera() {
+                async startCamera(preferredCameraId = null) {
+                    if (this.isStarting) return;
+                    this.isStarting = true;
+
                     if (typeof Html5Qrcode === 'undefined') {
                         this.hasError = true;
+                        this.errorType = 'unsupported';
                         this.errorMessage = 'Scanner library is loading. Please wait a moment and tap Retry.';
+                        this.isStarting = false;
                         return;
                     }
 
                     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                         this.hasError = true;
+                        this.errorType = this.isInsecureContext ? 'insecure' : 'unsupported';
                         this.errorMessage = this.isInsecureContext ?
                             'Camera access blocked: this page must be served over HTTPS when accessed from a phone. Please use HTTPS or enter the SKU manually.' :
-                            'Camera API is not supported on this browser.';
+                            'Camera scanning is not supported by this browser.';
+                        this.isStarting = false;
                         return;
                     }
 
-                    // Probe for permission first so we get a clean NotAllowedError
-                    // instead of a generic html5-qrcode initialisation failure.
-                    try {
-                        const probe = await navigator.mediaDevices.getUserMedia({ video: true });
-                        probe.getTracks().forEach(t => t.stop());
-                    } catch (permErr) {
-                        this.hasError = true;
-                        const n = permErr?.name || '';
-                        if (n === 'NotAllowedError' || n === 'PermissionDeniedError') {
-                            this.errorMessage = 'Camera permission denied. Please allow camera access in your browser settings, then tap Retry Camera.';
-                        } else if (n === 'NotFoundError') {
-                            this.errorMessage = 'No camera detected on this device.';
-                        } else {
-                            this.errorMessage = 'Camera unavailable: ' + (permErr?.message || n);
-                        }
+                    // Always release any existing stream and DOM elements first
+                    await this.stopCamera();
+
+                    const viewportId = "na-pos-camera-viewport";
+                    const container = document.getElementById(viewportId);
+                    if (!container) {
+                        this.isStarting = false;
                         return;
                     }
+                    container.innerHTML = '';
 
                     try {
-                        if (this.html5QrCode && this.html5QrCode.isScanning) {
-                            await this.stopCamera();
-                        }
-
-                        // Re-create the viewport element so html5-qrcode always
-                        // gets a fresh, empty container (clear() destroys it on stop).
-                        const container = document.getElementById("na-pos-camera-viewport");
-                        if (container) {
-                            container.innerHTML = '';
-                        }
-
-                        this.html5QrCode = new Html5Qrcode("na-pos-camera-viewport", {
+                        this.html5QrCode = new Html5Qrcode(viewportId, {
                             verbose: false,
                             formatsToSupport: [
                                 Html5QrcodeSupportedFormats.EAN_13,
@@ -1825,12 +1821,7 @@
                                 Html5QrcodeSupportedFormats.QR_CODE
                             ]
                         });
-                        this.isScanning = true;
-                        this.hasError = false;
 
-                        // NOTE: do NOT put videoConstraints or focusMode inside
-                        // the scan config — in html5-qrcode v2.x they override
-                        // the camera selection and cause OverconstrainedError.
                         const config = {
                             fps: 15,
                             qrbox: (viewfinderWidth, viewfinderHeight) => {
@@ -1853,24 +1844,29 @@
                             this.onBarcodeDetected(decodedText);
                         };
 
+                        const camId = preferredCameraId || this.selectedCameraId;
                         let started = false;
 
-                        // Attempt 1: start by specific deviceId (most reliable)
-                        if (this.selectedCameraId) {
+                        // If user chose a specific valid camera device
+                        if (camId && this.cameras.some(c => c.id === camId)) {
                             try {
                                 await this.html5QrCode.start(
-                                    this.selectedCameraId,
+                                    camId,
                                     config,
                                     onScanSuccess,
                                     () => {}
                                 );
                                 started = true;
                             } catch (eDevice) {
-                                console.warn('Camera start by deviceId failed, trying facingMode:', eDevice);
+                                console.warn('Camera start by deviceId failed, resetting instance for facingMode fallback:', eDevice);
+                                await this.stopCamera();
+                                container.innerHTML = '';
+                                this.selectedCameraId = '';
+                                this.html5QrCode = new Html5Qrcode(viewportId, { verbose: false });
                             }
                         }
 
-                        // Attempt 2: facingMode with "ideal" (soft preference)
+                        // Start with ideal facingMode (prefer rear/environment camera)
                         if (!started) {
                             try {
                                 await this.html5QrCode.start(
@@ -1880,35 +1876,23 @@
                                     () => {}
                                 );
                                 started = true;
-                            } catch (eFacing) {
-                                console.warn('Camera start with ideal facingMode failed, trying exact:', eFacing);
-                            }
-                        }
-
-                        // Attempt 3: facingMode exact match
-                        if (!started) {
-                            try {
+                            } catch (eIdeal) {
+                                console.warn('Camera start with ideal facingMode failed, retrying with simple constraint:', eIdeal);
+                                await this.stopCamera();
+                                container.innerHTML = '';
+                                this.html5QrCode = new Html5Qrcode(viewportId, { verbose: false });
                                 await this.html5QrCode.start(
-                                    { facingMode: { exact: this.facingMode } },
+                                    { facingMode: this.facingMode },
                                     config,
                                     onScanSuccess,
                                     () => {}
                                 );
                                 started = true;
-                            } catch (eExact) {
-                                console.warn('Camera start with exact facingMode failed, trying any camera:', eExact);
                             }
                         }
 
-                        // Attempt 4: last resort — let the browser pick any camera
-                        if (!started) {
-                            await this.html5QrCode.start(
-                                { facingMode: 'environment' },
-                                config,
-                                onScanSuccess,
-                                () => {}
-                            );
-                        }
+                        this.isScanning = true;
+                        this.hasError = false;
 
                         // Torch detection (non-fatal)
                         try {
@@ -1918,7 +1902,7 @@
                             this.hasTorch = false;
                         }
 
-                        // iOS Safari needs these attributes set after stream starts
+                        // iOS Safari requirements for video playback
                         const videoEl = document.querySelector('#na-pos-camera-viewport video');
                         if (videoEl) {
                             videoEl.setAttribute('playsinline', 'true');
@@ -1930,39 +1914,52 @@
                             videoEl.style.height = '100%';
                         }
 
-                        if (this.cameras.length === 0) {
-                            await this.loadCameras();
-                        }
+                        // Enumerate cameras now that permission has been granted
+                        await this.loadCameras();
 
                     } catch (err) {
-                        console.error('Camera scanner start error:', err);
+                        console.error('POS Camera scanner error:', err);
                         this.isScanning = false;
                         this.hasError = true;
+                        await this.stopCamera();
 
                         const msg = (err?.message || '').toLowerCase();
                         const name = err?.name || '';
 
                         if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || msg.includes('permission') || msg.includes('denied')) {
-                            this.errorMessage = 'Camera permission denied. Please allow camera access in your browser settings, then tap Retry Camera.';
-                        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || msg.includes('not found')) {
-                            this.errorMessage = 'No camera device found on this device.';
-                        } else if (name === 'NotReadableError' || name === 'TrackStartError' || msg.includes('busy') || msg.includes('in use')) {
-                            this.errorMessage = 'Camera is busy or in use by another app. Please close other camera apps and tap Retry.';
+                            this.errorType = 'permission';
+                            this.errorMessage = 'Camera permission is blocked. Allow camera access for Laijau and try again.';
+                        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || msg.includes('not found') || msg.includes('devicesnotfound')) {
+                            this.errorType = 'notfound';
+                            this.errorMessage = 'No camera was found on this device.';
+                        } else if (name === 'NotReadableError' || name === 'TrackStartError' || msg.includes('busy') || msg.includes('in use') || msg.includes('could not start')) {
+                            this.errorType = 'busy';
+                            this.errorMessage = 'The camera is currently being used by another application.';
                         } else if (name === 'OverconstrainedError' || msg.includes('overconstrained') || msg.includes('constraint')) {
+                            this.errorType = 'overconstrained';
                             this.errorMessage = 'Camera constraint not supported on this device. Tap \'Try Other Camera\' to use a different camera.';
-                        } else if (name === 'NotSupportedError' || msg.includes('not supported')) {
-                            this.errorMessage = 'Camera not supported in this browser. Try Chrome or Safari.';
-                        } else if (this.isInsecureContext) {
+                        } else if (name === 'SecurityError' || this.isInsecureContext) {
+                            this.errorType = 'insecure';
                             this.errorMessage = 'Camera blocked: page must be served over HTTPS when accessed from another device. Enter SKU manually below.';
+                        } else if (name === 'NotSupportedError' || msg.includes('not supported')) {
+                            this.errorType = 'unsupported';
+                            this.errorMessage = 'Camera scanning is not supported by this browser.';
                         } else {
-                            this.errorMessage = 'Unable to open camera: ' + (err?.message || 'initialization failed');
+                            this.errorType = 'generic';
+                            this.errorMessage = 'Unable to start the camera. Please try again.';
                         }
+                    } finally {
+                        this.isStarting = false;
                     }
+                },
+
+                async retryCamera() {
+                    await this.startCamera(this.selectedCameraId || null);
                 },
 
                 async onCameraChange() {
                     if (this.selectedCameraId) {
-                        await this.startCamera();
+                        await this.startCamera(this.selectedCameraId);
                     }
                 },
 
@@ -1974,10 +1971,28 @@
                             }
                             this.html5QrCode.clear();
                         } catch (e) {
-                            console.warn("Error stopping camera:", e);
+                            console.warn("Error stopping Html5Qrcode:", e);
                         }
+                        this.html5QrCode = null;
                     }
+
+                    // Explicitly stop all remaining video tracks in the viewport to avoid camera hardware lock
+                    const container = document.getElementById("na-pos-camera-viewport");
+                    if (container) {
+                        container.querySelectorAll('video').forEach(video => {
+                            if (video.srcObject && video.srcObject.getTracks) {
+                                video.srcObject.getTracks().forEach(track => {
+                                    try { track.stop(); } catch (e) {}
+                                });
+                            }
+                            video.srcObject = null;
+                        });
+                        container.innerHTML = '';
+                    }
+
                     this.isScanning = false;
+                    this.torchOn = false;
+                    this.hasTorch = false;
                 },
 
                 async closeScanner() {
@@ -1990,10 +2005,12 @@
                         const currentIndex = this.cameras.findIndex(c => c.id === this.selectedCameraId);
                         const nextIndex = (currentIndex + 1) % this.cameras.length;
                         this.selectedCameraId = this.cameras[nextIndex].id;
+                        await this.startCamera(this.selectedCameraId);
                     } else {
                         this.facingMode = this.facingMode === "environment" ? "user" : "environment";
+                        this.selectedCameraId = '';
+                        await this.startCamera();
                     }
-                    await this.startCamera();
                 },
 
                 async toggleTorch() {

@@ -249,7 +249,7 @@
         </div>
         <div class="meta-row">
             <span>Date & Time:</span>
-            <span>{{ $sale->sold_at ? $sale->sold_at->format('d M Y, H:i') : now()->format('d M Y, H:i') }}</span>
+            <span>{{ $sale->sold_at ? $sale->sold_at->timezone('Asia/Kathmandu')->format('d M Y, h:i A') : now('Asia/Kathmandu')->format('d M Y, h:i A') }}</span>
         </div>
         <div class="meta-row">
             <span>Customer:</span>

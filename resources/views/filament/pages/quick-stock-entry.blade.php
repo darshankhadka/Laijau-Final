@@ -1360,11 +1360,7 @@
                                     const qrboxHeight = Math.floor(qrboxWidth * 0.65);
                                     return { width: Math.max(220, qrboxWidth), height: Math.max(140, qrboxHeight) };
                                 },
-                                aspectRatio: 1.333334,
-                                videoConstraints: {
-                                    facingMode: { ideal: this.facingMode },
-                                    focusMode: "continuous"
-                                }
+                                aspectRatio: 1.333334
                             };
 
                             let lastCode = '';
@@ -1381,7 +1377,7 @@
                             };
 
                             let started = false;
-                            if (this.selectedCameraId) {
+                            if (this.selectedCameraId && this.cameras.some(c => c.id === this.selectedCameraId)) {
                                 try {
                                     await this.html5QrCode.start(
                                         this.selectedCameraId,
@@ -1391,7 +1387,12 @@
                                     );
                                     started = true;
                                 } catch (eDevice) {
-                                    console.warn("Failed starting camera by deviceId, falling back to facingMode:", eDevice);
+                                    console.warn("Failed starting camera by deviceId, resetting for facingMode fallback:", eDevice);
+                                    await this.stopCamera();
+                                    const vp = document.getElementById("lj-stock-camera-viewport");
+                                    if (vp) vp.innerHTML = '';
+                                    this.selectedCameraId = '';
+                                    this.html5QrCode = new Html5Qrcode("lj-stock-camera-viewport", { verbose: false });
                                 }
                             }
 
@@ -1405,17 +1406,19 @@
                                     );
                                     started = true;
                                 } catch (eFacing) {
-                                    console.warn("Failed with ideal facingMode, falling back to default camera:", eFacing);
+                                    console.warn("Failed with ideal facingMode, retrying with simple constraint:", eFacing);
+                                    await this.stopCamera();
+                                    const vp = document.getElementById("lj-stock-camera-viewport");
+                                    if (vp) vp.innerHTML = '';
+                                    this.html5QrCode = new Html5Qrcode("lj-stock-camera-viewport", { verbose: false });
+                                    await this.html5QrCode.start(
+                                        { facingMode: this.facingMode },
+                                        config,
+                                        onScanSuccess,
+                                        () => {}
+                                    );
+                                    started = true;
                                 }
-                            }
-
-                            if (!started) {
-                                await this.html5QrCode.start(
-                                    { facingMode: this.facingMode },
-                                    config,
-                                    onScanSuccess,
-                                    () => {}
-                                );
                             }
 
                             try {
@@ -1436,27 +1439,30 @@
                                 videoEl.style.height = "100%";
                             }
 
-                            if (this.cameras.length === 0) {
-                                await this.loadCameras();
-                            }
+                            await this.loadCameras();
                         } catch (err) {
                             console.error("Stock scanner error:", err);
                             this.isScanning = false;
                             this.hasError = true;
+                            await this.stopCamera();
 
                             const msg = (err?.message || '').toLowerCase();
                             const name = err?.name || '';
 
                             if (name === 'NotAllowedError' || msg.includes('permission') || msg.includes('denied')) {
-                                this.errorMessage = 'Camera permission denied. Please allow camera access in your phone browser settings, then tap Retry Camera.';
+                                this.errorMessage = 'Camera permission is blocked. Allow camera access for Laijau and try again.';
                             } else if (name === 'NotFoundError' || msg.includes('not found') || msg.includes('devicesnotfound')) {
-                                this.errorMessage = 'No camera device detected on this mobile phone.';
-                            } else if (name === 'NotReadableError' || msg.includes('busy') || msg.includes('in use')) {
-                                this.errorMessage = 'Camera is in use by another app. Please close other camera apps and retry.';
+                                this.errorMessage = 'No camera was found on this device.';
+                            } else if (name === 'NotReadableError' || msg.includes('busy') || msg.includes('in use') || msg.includes('could not start')) {
+                                this.errorMessage = 'The camera is currently being used by another application.';
+                            } else if (name === 'OverconstrainedError' || msg.includes('overconstrained') || msg.includes('constraint')) {
+                                this.errorMessage = 'Camera constraint not supported on this device. Tap \'Try Other Camera\' to use a different camera.';
                             } else if (this.isInsecureContext) {
                                 this.errorMessage = 'Camera blocked by browser: Accessing over HTTP from another device is restricted by iOS/Chrome. Please use HTTPS or type SKU manually.';
+                            } else if (name === 'NotSupportedError' || msg.includes('not supported')) {
+                                this.errorMessage = 'Camera scanning is not supported by this browser.';
                             } else {
-                                this.errorMessage = 'Unable to open camera: ' + (err?.message || 'Camera initialization failed');
+                                this.errorMessage = 'Unable to start the camera. Please try again.';
                             }
                         }
                     },
@@ -1477,8 +1483,22 @@
                             } catch (e) {
                                 console.warn("Error stopping camera:", e);
                             }
+                            this.html5QrCode = null;
+                        }
+
+                        const viewport = document.getElementById("lj-stock-camera-viewport");
+                        if (viewport) {
+                            viewport.querySelectorAll('video').forEach(v => {
+                                if (v.srcObject && v.srcObject.getTracks) {
+                                    v.srcObject.getTracks().forEach(t => { try { t.stop(); } catch(e) {} });
+                                }
+                                v.srcObject = null;
+                            });
+                            viewport.innerHTML = '';
                         }
                         this.isScanning = false;
+                        this.hasTorch = false;
+                        this.torchOn = false;
                     },
 
                     async closeScanner() {

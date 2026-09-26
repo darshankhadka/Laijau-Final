@@ -1,96 +1,181 @@
 @extends('attendance.layout')
 
-@section('title', 'Sign In — Laijau Attendance')
+@section('title', 'Sign In & Device Pairing — Laijau Attendance')
 
 @section('content')
-<div x-data="attendanceLogin()" class="att-login-wrap" style="display:flex;flex-direction:column;gap:1.25rem;">
+<div x-data="attendanceLogin({{ $device ? 'true' : 'false' }})" class="att-login-wrap" style="width:100%;max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:1.25rem;">
 
-    <!-- Device Recognition Banner -->
-    @if($device)
-        <div class="att-card" style="background:#f8fafc;border-color:var(--att-gray-200);text-align:center;">
-            <div style="width:3rem;height:3rem;border-radius:9999px;background:var(--att-navy);color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:1.25rem;font-weight:900;margin:0 auto 0.5rem;">
-                {{ substr($device->employee->first_name ?? 'E', 0, 1) }}
-            </div>
-            <h3 style="font-size:1.05rem;font-weight:800;color:var(--att-navy);margin:0;">
-                {{ $device->employee->full_name ?? 'Employee' }}
-            </h3>
-            <div style="font-size:0.75rem;color:var(--att-gray-500);font-family:monospace;margin-top:0.15rem;">
-                {{ $device->employee->employee_number ?? '' }} &bull; {{ $device->device_name }}
-            </div>
+    <!-- Top Branding -->
+    <div style="text-align:center;padding:1rem 0 0.25rem 0;">
+        <div style="width:3.25rem;height:3.25rem;border-radius:1rem;background:#001b48;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;font-size:1.35rem;font-weight:900;box-shadow:0 8px 20px -4px rgba(0,27,72,0.25);margin-bottom:0.75rem;">
+            LJ
         </div>
-    @else
-        <div class="att-card" style="background:#fffbeb;border-color:#fde68a;">
-            <div style="display:flex;gap:0.75rem;">
-                <span>ℹ️</span>
-                <div style="font-size:0.75rem;color:#92400e;">
-                    <strong>Device Not Recognized:</strong> If this is your first time using this phone or browser, please complete the <a href="{{ route('attendance.setup') }}" style="color:var(--att-navy);font-weight:700;">one-time device setup</a>.
-                </div>
-            </div>
-        </div>
-    @endif
+        <h2 style="font-size:1.25rem;font-weight:900;color:#001b48;margin:0;letter-spacing:-0.02em;" x-text="mode === 'pair' ? 'Register Attendance Device' : 'Attendance Sign In'">
+            Attendance Sign In
+        </h2>
+        <p style="font-size:0.75rem;color:#64748b;margin-top:0.35rem;line-height:1.4;" x-text="mode === 'pair' ? 'One-time device pairing for showroom staff. Once paired, attendance access is persistent.' : 'Enter your attendance PIN to access your staff dashboard.'">
+        </p>
+    </div>
 
     <!-- Error Banner -->
     <template x-if="errorMessage">
-        <div style="padding:0.75rem 1rem;background:#fee2e2;border:1px solid #f87171;border-radius:var(--att-radius);color:#991b1b;font-size:0.8125rem;font-weight:600;display:flex;align-items:center;gap:0.5rem;">
-            <span>⚠️</span>
-            <span x-text="errorMessage"></span>
+        <div style="padding:0.75rem 1rem;background:#fee2e2;border:1px solid #f87171;border-radius:0.75rem;color:#991b1b;font-size:0.8125rem;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+                <span>⚠️</span>
+                <span x-text="errorMessage"></span>
+            </div>
+            <button type="button" @click="errorMessage = null" style="background:none;border:none;color:#991b1b;font-weight:800;font-size:1rem;cursor:pointer;">×</button>
         </div>
     </template>
 
-    <!-- PIN Unlock Card -->
-    <div class="att-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-            <h4 style="font-size:0.95rem;font-weight:800;color:var(--att-navy);margin:0;">Enter Attendance PIN</h4>
-            <span class="att-badge att-badge-navy">Secure</span>
-        </div>
+    <!-- ========================================================================= -->
+    <!-- VIEW A: PIN UNLOCK (When Device is Recognized) -->
+    <!-- ========================================================================= -->
+    <div x-show="mode === 'unlock'" style="display:flex;flex-direction:column;gap:1.25rem;">
+        @if($device)
+            <div class="att-card" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:0.875rem;padding:1.25rem;text-align:center;">
+                <div style="width:3rem;height:3rem;border-radius:9999px;background:#001b48;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:1.25rem;font-weight:900;margin:0 auto 0.5rem;">
+                    {{ substr($device->employee->first_name ?? 'E', 0, 1) }}
+                </div>
+                <h3 style="font-size:1.05rem;font-weight:800;color:#001b48;margin:0;">
+                    {{ $device->employee->full_name ?? 'Employee' }}
+                </h3>
+                <div style="font-size:0.75rem;color:#64748b;font-family:monospace;margin-top:0.25rem;">
+                    {{ $device->employee->employee_number ?? '' }} &bull; {{ $device->device_name }}
+                </div>
+            </div>
+        @endif
 
-        <div class="att-form-group">
-            <input
-                type="password"
-                x-model="pin"
-                @keydown.enter.prevent="submitPin()"
-                maxlength="8"
-                class="att-input font-mono"
-                style="text-align:center;font-size:1.5rem;letter-spacing:0.25em;height:3.5rem;"
-                placeholder="••••"
-                inputmode="numeric"
-                autocomplete="current-password"
-                autofocus>
-        </div>
-
-        <button
-            type="button"
-            @click="submitPin()"
-            :disabled="loading || pin.length < 4"
-            class="att-btn att-btn-primary">
-            <span x-show="!loading">Unlock Dashboard →</span>
-            <span x-show="loading">Authenticating...</span>
-        </button>
-
-        @if($device && $device->passkey_credential_id)
-            <div style="position:relative;text-align:center;margin:0.25rem 0;">
-                <hr style="border:0;border-top:1px solid var(--att-gray-200);">
-                <span style="position:relative;top:-10px;background:#fff;padding:0 0.5rem;font-size:0.6875rem;color:var(--att-gray-500);font-weight:700;text-transform:uppercase;">Or</span>
+        <div class="att-card" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:0.875rem;padding:1.5rem;box-shadow:0 4px 15px -3px rgba(0,0,0,0.05);display:flex;flex-direction:column;gap:1.15rem;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+                <h4 style="font-size:0.95rem;font-weight:800;color:#001b48;margin:0;">Enter Attendance PIN</h4>
+                <span class="att-badge att-badge-navy" style="font-size:0.6875rem;padding:0.15rem 0.5rem;border-radius:9999px;background:#e0e7ff;color:#3730a3;font-weight:700;">Secure</span>
             </div>
 
-            <!-- Native Biometrics Button (WebAuthn) -->
+            <div class="att-form-group">
+                <input
+                    type="password"
+                    x-model="pin"
+                    @keydown.enter.prevent="submitPin()"
+                    maxlength="8"
+                    class="att-input font-mono"
+                    style="text-align:center;font-size:1.5rem;letter-spacing:0.25em;height:3.5rem;width:100%;border:1px solid #cbd5e1;border-radius:0.5rem;"
+                    placeholder="••••"
+                    inputmode="numeric"
+                    autocomplete="current-password"
+                    autofocus>
+            </div>
+
             <button
                 type="button"
-                @click="loginWithPasskey()"
-                :disabled="passkeyLoading"
-                class="att-btn att-btn-emerald">
-                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"></path></svg>
-                <span x-show="!passkeyLoading">Use Face ID / Fingerprint</span>
-                <span x-show="passkeyLoading">Verifying Biometrics...</span>
+                @click="submitPin()"
+                :disabled="loading || pin.length < 4"
+                class="att-btn att-btn-primary"
+                style="width:100%;min-height:3rem;border-radius:0.5rem;background:#001b48;color:#ffffff;font-size:0.95rem;font-weight:800;border:none;cursor:pointer;">
+                <span x-show="!loading">Unlock Dashboard →</span>
+                <span x-show="loading">Authenticating...</span>
             </button>
-        @endif
+        </div>
+
+        <div style="text-align:center;padding:0.5rem 0;">
+            <button
+                type="button"
+                @click="setMode('pair')"
+                style="background:none;border:none;font-size:0.8125rem;color:#001b48;font-weight:700;text-decoration:underline;cursor:pointer;">
+                Pair a Different Device or Reset Pairing &rarr;
+            </button>
+        </div>
     </div>
 
-    <!-- Switch / Setup Link -->
-    <div style="text-align:center;padding:0.5rem 0;">
-        <a href="{{ route('attendance.setup') }}" style="font-size:0.8125rem;color:var(--att-navy);font-weight:700;text-decoration:none;">
-            Register a New Device or Reset Pairing &rarr;
-        </a>
+    <!-- ========================================================================= -->
+    <!-- VIEW B: DEVICE PAIRING FORM (When Device Not Recognized or Registering) -->
+    <!-- ========================================================================= -->
+    <div x-show="mode === 'pair'" style="display:flex;flex-direction:column;gap:1.25rem;">
+        <div class="att-card" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:0.875rem;padding:1.5rem;box-shadow:0 4px 15px -3px rgba(0,0,0,0.05);display:flex;flex-direction:column;gap:1.15rem;">
+            
+            <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:0.75rem;border-bottom:1px solid #f1f5f9;">
+                <span style="font-size:0.8125rem;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:0.04em;">Employee Verification</span>
+                <span class="att-badge att-badge-navy" style="font-size:0.6875rem;padding:0.15rem 0.5rem;border-radius:9999px;background:#e0e7ff;color:#3730a3;font-weight:700;">One-Time Pairing</span>
+            </div>
+
+            <!-- 1. Employee ID -->
+            <div class="att-form-group" style="display:flex;flex-direction:column;gap:0.35rem;">
+                <label class="att-label" style="font-size:0.75rem;font-weight:700;color:#334155;">Employee ID *</label>
+                <input
+                    type="text"
+                    x-model="pairForm.employee_number"
+                    @input="clearPairError('employee_number')"
+                    class="att-input font-mono"
+                    style="width:100%;height:2.85rem;padding:0.5rem 0.85rem;border:1px solid #cbd5e1;border-radius:0.5rem;font-size:0.95rem;text-transform:uppercase;"
+                    placeholder="e.g. LJ-EMP-001 or 001"
+                    autocomplete="off"
+                    autocapitalize="characters">
+                <span class="att-input-error" style="color:#dc2626;font-size:0.6875rem;font-weight:600;" x-show="pairErrors.employee_number" x-text="pairErrors.employee_number"></span>
+            </div>
+
+            <!-- 2. Registered Phone Number -->
+            <div class="att-form-group" style="display:flex;flex-direction:column;gap:0.35rem;">
+                <label class="att-label" style="font-size:0.75rem;font-weight:700;color:#334155;">Registered Phone Number *</label>
+                <input
+                    type="tel"
+                    x-model="pairForm.phone"
+                    @input="clearPairError('phone')"
+                    class="att-input font-mono"
+                    style="width:100%;height:2.85rem;padding:0.5rem 0.85rem;border:1px solid #cbd5e1;border-radius:0.5rem;font-size:0.95rem;"
+                    placeholder="e.g. 98XXXXXXXX"
+                    autocomplete="tel">
+                <span class="att-input-error" style="color:#dc2626;font-size:0.6875rem;font-weight:600;" x-show="pairErrors.phone" x-text="pairErrors.phone"></span>
+            </div>
+
+            <!-- 3. Admin PIN -->
+            <div class="att-form-group" style="display:flex;flex-direction:column;gap:0.35rem;">
+                <label class="att-label" style="font-size:0.75rem;font-weight:700;color:#334155;">Attendance Admin PIN *</label>
+                <input
+                    type="password"
+                    x-model="pairForm.pin"
+                    @input="clearPairError('pin')"
+                    maxlength="8"
+                    class="att-input font-mono"
+                    style="width:100%;height:2.85rem;padding:0.5rem 0.85rem;border:1px solid #cbd5e1;border-radius:0.5rem;font-size:1.15rem;letter-spacing:0.15em;"
+                    placeholder="••••"
+                    inputmode="numeric"
+                    autocomplete="current-password">
+                <div style="font-size:0.6875rem;color:#64748b;">4 to 8 numeric digits assigned by your manager</div>
+                <span class="att-input-error" style="color:#dc2626;font-size:0.6875rem;font-weight:600;" x-show="pairErrors.pin" x-text="pairErrors.pin"></span>
+            </div>
+
+            <!-- Primary Action Button -->
+            <button
+                type="button"
+                @click="pairDevice()"
+                :disabled="loading || !pairForm.employee_number || !pairForm.phone || pairForm.pin.length < 4"
+                class="att-btn att-btn-emerald"
+                style="width:100%;min-height:3.25rem;border-radius:0.5rem;background:#059669;color:#ffffff;font-size:0.95rem;font-weight:800;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.5rem;box-shadow:0 4px 12px rgba(5,150,105,0.25);transition:all 0.15s ease;margin-top:0.25rem;">
+                <svg x-show="loading" style="animation:spin 1s linear infinite;width:18px;height:18px;" fill="none" viewBox="0 0 24 24">
+                    <circle style="opacity:0.25;" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path style="opacity:0.75;" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span x-show="!loading">Verify &amp; Continue to Attendance &rarr;</span>
+                <span x-show="loading">Verifying &amp; Pairing Device...</span>
+            </button>
+        </div>
+
+        @if($device)
+            <div style="text-align:center;padding:0.25rem 0;">
+                <button
+                    type="button"
+                    @click="setMode('unlock')"
+                    style="background:none;border:none;font-size:0.8125rem;color:#001b48;font-weight:700;text-decoration:underline;cursor:pointer;">
+                    &larr; Back to PIN Unlock
+                </button>
+            </div>
+        @endif
+
+        <div style="text-align:center;padding:0.25rem 0.5rem;">
+            <div style="font-size:0.6875rem;color:#64748b;line-height:1.5;">
+                🔒 Device pairing utilizes secure cryptographic hardware tokens. GPS location is only checked when punching attendance.
+            </div>
+        </div>
     </div>
 
 </div>
@@ -98,12 +183,30 @@
 
 @section('scripts')
 <script>
-function attendanceLogin() {
+function attendanceLogin(hasRecognizedDevice) {
     return {
+        mode: hasRecognizedDevice ? 'unlock' : 'pair',
         pin: '',
         loading: false,
-        passkeyLoading: false,
         errorMessage: null,
+        pairErrors: {},
+        pairForm: {
+            employee_number: '',
+            phone: '',
+            pin: '',
+        },
+
+        setMode(newMode) {
+            this.mode = newMode;
+            this.errorMessage = null;
+        },
+
+        clearPairError(field) {
+            delete this.pairErrors[field];
+            if (Object.keys(this.pairErrors).length === 0) {
+                this.errorMessage = null;
+            }
+        },
 
         async submitPin() {
             if (this.pin.length < 4) return;
@@ -111,7 +214,6 @@ function attendanceLogin() {
             this.loading = true;
             this.errorMessage = null;
 
-            // Retrieve cached device token from localStorage if cookie was cleared
             const cachedToken = localStorage.getItem('laijau_att_token');
 
             try {
@@ -132,7 +234,8 @@ function attendanceLogin() {
                 const data = await res.json();
                 if (!res.ok) {
                     if (data.requires_setup) {
-                        window.location.href = '/attendance/setup';
+                        this.setMode('pair');
+                        this.errorMessage = data.error || 'Please pair this device first.';
                         return;
                     }
                     this.errorMessage = data.errors?.pin?.[0] || data.error || 'Authentication failed.';
@@ -148,64 +251,77 @@ function attendanceLogin() {
             }
         },
 
-        async loginWithPasskey() {
-            if (!window.PublicKeyCredential) {
-                alert('Biometrics are not supported on this browser.');
+        async pairDevice() {
+            this.pairErrors = {};
+            this.errorMessage = null;
+
+            if (!this.pairForm.employee_number.trim()) {
+                this.pairErrors.employee_number = 'Employee ID is required.';
+                return;
+            }
+            if (!this.pairForm.phone.trim()) {
+                this.pairErrors.phone = 'Registered phone number is required.';
+                return;
+            }
+            if (this.pairForm.pin.length < 4) {
+                this.pairErrors.pin = 'PIN must be at least 4 digits.';
                 return;
             }
 
-            this.passkeyLoading = true;
-            this.errorMessage = null;
-            const cachedToken = localStorage.getItem('laijau_att_token');
+            this.loading = true;
+
+            const platformName = /iPhone|iPad|iPod/.test(navigator.userAgent) ? 'iOS' : (/Android/.test(navigator.userAgent) ? 'Android' : 'Desktop');
+            const browserName = navigator.userAgent.includes('Chrome') ? 'Chrome' : (navigator.userAgent.includes('Safari') ? 'Safari' : 'Browser');
+            const deviceName = navigator.userAgentData?.platform || navigator.platform || (platformName + ' Device');
 
             try {
-                // 1. Get assertion options
-                const optRes = await fetch('/attendance/api/webauthn/login-options', {
+                const response = await fetch('/attendance/api/setup', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
                         'Accept': 'application/json',
-                        ...(cachedToken ? { 'X-Device-Token': cachedToken } : {})
-                    }
-                });
-
-                const options = await optRes.json();
-                if (!optRes.ok) throw new Error(options.error || 'Passkey authentication unavailable');
-
-                options.challenge = Uint8Array.from(atob(options.challenge), c => c.charCodeAt(0));
-                options.allowCredentials = options.allowCredentials.map(c => ({
-                    ...c,
-                    id: Uint8Array.from(atob(c.id), ch => ch.charCodeAt(0)),
-                }));
-
-                // 2. Invoke native biometric prompt
-                const assertion = await navigator.credentials.get({ publicKey: options });
-
-                // 3. Verify on server
-                const verifyRes = await fetch('/attendance/api/webauthn/login-verify', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                        'Accept': 'application/json',
-                        ...(cachedToken ? { 'X-Device-Token': cachedToken } : {})
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
                     },
                     body: JSON.stringify({
-                        id: assertion.id,
+                        employee_number: this.pairForm.employee_number.trim(),
+                        phone: this.pairForm.phone.trim(),
+                        pin: this.pairForm.pin,
+                        device_name: deviceName,
+                        platform: platformName,
+                        browser: browserName,
                     })
                 });
 
-                const verifyData = await verifyRes.json();
-                if (verifyRes.ok) {
-                    window.location.href = verifyData.redirect || '/attendance';
-                } else {
-                    this.errorMessage = verifyData.error || 'Biometric verification failed.';
+                const data = await response.json();
+
+                if (!response.ok) {
+                    if (response.status === 422 && data.errors) {
+                        this.pairErrors = {};
+                        for (const key in data.errors) {
+                            this.pairErrors[key] = data.errors[key][0];
+                        }
+                        this.errorMessage = Object.values(data.errors)[0][0] || 'Validation error.';
+                    } else {
+                        this.errorMessage = data.error || data.message || 'Verification failed. Please check your credentials.';
+                    }
+                    this.loading = false;
+                    return;
                 }
+
+                // Persist device token securely to localStorage as fallback
+                if (data.device_token) {
+                    try {
+                        localStorage.setItem('laijau_att_token', data.device_token);
+                    } catch (e) {
+                        console.warn('Could not save token to localStorage:', e);
+                    }
+                }
+
+                // Smoothly proceed to Attendance Dashboard
+                window.location.href = data.redirect || '/attendance';
             } catch (err) {
-                console.warn('Biometrics login cancelled or error:', err);
-            } finally {
-                this.passkeyLoading = false;
+                this.loading = false;
+                this.errorMessage = 'Network connection error. Please verify your connection and try again.';
             }
         }
     };

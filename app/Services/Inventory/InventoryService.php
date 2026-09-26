@@ -673,13 +673,15 @@ class InventoryService
     }
 
     /**
-     * Offline Sales / POS Integration: Deduct stock from designated POS Warehouse (defaults to Showroom).
+     * Offline Sales / POS Integration: Deduct stock from the shared central inventory pool.
+     * Both Terminal 1 and Terminal 2 sell from this single shared inventory pool.
      */
     public function deductPosSale(OfflineSale $sale, ?User $user = null, ?int $warehouseId = null): void
     {
-        $targetWh = $warehouseId
-            ? (\App\Models\Inventory\Warehouse::find($warehouseId) ?? $this->getShowroomWarehouse())
-            : ($sale->warehouse_id ? (\App\Models\Inventory\Warehouse::find($sale->warehouse_id) ?? $this->getShowroomWarehouse()) : $this->getShowroomWarehouse());
+        // Central Shared Warehouse pool across POS terminals / showrooms or explicitly selected warehouse
+        $targetWh = ($warehouseId ? Warehouse::find($warehouseId) : null)
+            ?? ($sale->warehouse_id ? Warehouse::find($sale->warehouse_id) : null)
+            ?? $this->getDefaultWarehouse();
 
         DB::transaction(function () use ($sale, $targetWh, $user) {
             $sale->load('items.product');
@@ -695,25 +697,27 @@ class InventoryService
                     'reference_id' => $sale->id,
                     'reference_number' => $sale->sale_number,
                     'reason' => "POS sale #{$sale->sale_number} ({$sale->customer_name})",
-                    'notes' => "Payment: {$sale->payment_method}, Channel: {$sale->sales_channel}",
+                    'notes' => "Payment: {$sale->payment_method}, Channel: {$sale->sales_channel}, Showroom: " . ($sale->warehouse?->name ?? 'Showroom'),
                 ], $user);
             }
         });
     }
 
     /**
-     * Offline Sales / POS Integration: Restore stock for a voided POS sale.
+     * Offline Sales / POS Integration: Restore stock for a voided POS sale to shared inventory pool.
      */
     public function restorePosSale(OfflineSale $sale, string $reason, ?User $user = null): void
     {
-        $showroomWh = $this->getShowroomWarehouse();
+        // Central Shared Warehouse pool or sale warehouse
+        $targetWh = ($sale->warehouse_id ? Warehouse::find($sale->warehouse_id) : null)
+            ?? $this->getDefaultWarehouse();
 
-        DB::transaction(function () use ($sale, $reason, $showroomWh, $user) {
+        DB::transaction(function () use ($sale, $reason, $targetWh, $user) {
             $sale->load('items.product');
 
             foreach ($sale->items as $item) {
                 $this->recordStockMovement([
-                    'warehouse_id' => $showroomWh->id,
+                    'warehouse_id' => $targetWh->id,
                     'product_id' => $item->product_id,
                     'variant_id' => $item->variant_id,
                     'movement_type' => 'return_customer',

@@ -52,6 +52,10 @@
             --att-shadow-lg: 0 10px 30px -5px rgba(0, 27, 72, 0.12);
         }
 
+        [x-cloak] {
+            display: none !important;
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -332,12 +336,9 @@
     <div class="att-app-shell">
         <!-- Top Navigation -->
         <header class="att-header">
-            <a href="{{ route('attendance.dashboard') }}" class="att-brand">
-                <div class="att-logo-mark">L</div>
-                <div class="att-brand-text">
-                    <span class="att-brand-title">LAIJAU</span>
-                    <span class="att-brand-sub">Employee Attendance</span>
-                </div>
+            <a href="{{ route('attendance.dashboard') }}" class="att-brand" style="display:flex;align-items:center;gap:0.75rem;text-decoration:none;">
+                <img src="{{ asset('images/logo.png') }}" alt="Laijau" style="height:2rem;width:auto;max-width:130px;object-fit:contain;" onerror="this.onerror=null; this.src='{{ asset('logo.png') }}';">
+                <span class="att-brand-sub" style="border-left:1px solid var(--att-gray-300);padding-left:0.65rem;font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;color:var(--att-emerald);text-transform:uppercase;">Attendance</span>
             </a>
 
             @if(session('attendance_employee_id'))
@@ -365,6 +366,7 @@
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/attendance/sw.js', { scope: '/attendance' })
                     .then((reg) => {
+                        reg.update();
                         console.log('Attendance SW registered:', reg.scope);
                     })
                     .catch((err) => {

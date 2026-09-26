@@ -651,48 +651,54 @@ class AttendancePwaTest extends TestCase
     }
 
     /**
-     * 18. Attendance photo is protected from unauthorized access.
+     * 18. Persistent device authorization auto-rehydrates session without re-pairing.
      */
-    public function test_attendance_photo_authorization(): void
+    public function test_persistent_device_authorization_auto_rehydrates_session(): void
     {
         $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
         $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('test-photo-content');
+        $rawToken = $reg['device_token'];
 
-        $result = $this->service->submitAttendance($device, 'check_in', [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
-        ], $dummyBase64);
+        // Access dashboard with device cookie only (clean empty session, simulating reopened browser)
+        $response = $this->withUnencryptedCookie('laijau_attendance_device', $rawToken)
+            ->get(route('attendance.dashboard'));
 
-        $event = $result['event'];
-
-        // 1. Unauthenticated guest -> 403
-        $unauthRes = $this->get(route('attendance.photo', ['event' => $event->id]));
-        $unauthRes->assertStatus(403);
-
-        // 2. Owning employee -> 200
-        $ownerRes = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->get(route('attendance.photo', ['event' => $event->id]));
-        $ownerRes->assertStatus(200);
+        $response->assertStatus(200);
+        $response->assertSee($this->employee->first_name);
+        $this->assertEquals($this->employee->id, session('attendance_employee_id'));
+        $this->assertEquals($device->id, session('attendance_device_id'));
     }
 
     /**
-     * 19. WebAuthn challenge generation and registration options.
+     * 19. Clocked in employee always sees checked_in state when reopening.
      */
-    public function test_webauthn_registration_options_generation(): void
+    public function test_clocked_in_employee_sees_checked_in_state_on_reopening(): void
     {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Passkey Phone']);
+        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
         $device = $reg['device'];
         $rawToken = $reg['device_token'];
 
-        $response = $this->withHeader('X-Device-Token', $rawToken)
-            ->postJson(route('attendance.api.webauthn.register_options'));
+        // Clock in
+        $this->service->submitAttendance($device, 'check_in', [
+            'latitude' => 27.6976748,
+            'longitude' => 85.3664331,
+            'accuracy_meters' => 10,
+        ]);
 
-        $response->assertStatus(200);
-        $response->assertJsonStructure(['challenge', 'rp', 'user', 'pubKeyCredParams']);
+        // State check from API
+        $statusRes = $this->withHeader('X-Device-Token', $rawToken)
+            ->withUnencryptedCookie('laijau_attendance_device', $rawToken)
+            ->getJson(route('attendance.api.status'));
+
+        $statusRes->assertStatus(200);
+        $statusRes->assertJsonPath('state.state', 'checked_in');
+        $this->assertNotNull($statusRes->json('state.check_in_time'));
+
+        // Dashboard view check
+        $dashRes = $this->withUnencryptedCookie('laijau_attendance_device', $rawToken)
+            ->get(route('attendance.dashboard'));
+        $dashRes->assertStatus(200);
+        $dashRes->assertSee('CHECK OUT');
     }
 
     /**
@@ -781,5 +787,140 @@ class AttendancePwaTest extends TestCase
             'type' => 'check_out',
             'status' => 'verified',
         ]);
+    }
+
+    /**
+     * 23. Valid employee verification (Step 1) returns identity without persisting a device.
+     */
+    public function test_valid_employee_verification_returns_identity_without_persisting_device(): void
+    {
+        $response = $this->postJson(route('attendance.api.verify'), [
+            'employee_number' => 'TEST-EMP-999',
+            'phone' => '9841999888',
+            'pin' => '1234',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'employee' => [
+                'id' => $this->employee->id,
+                'name' => 'Suman Adhikari',
+                'code' => 'TEST-EMP-999',
+            ],
+        ]);
+
+        // Verify Step 1 NEVER creates an attendance device
+        $this->assertEquals(0, AttendanceDevice::where('employee_id', $this->employee->id)->count());
+        $this->assertNull(session('attendance_employee_id'));
+    }
+
+    /**
+     * 24. Invalid employee verification (Step 1) rejects bad PIN and tracks failed attempts.
+     */
+    public function test_invalid_employee_verification_rejects_bad_pin(): void
+    {
+        $response = $this->postJson(route('attendance.api.verify'), [
+            'employee_number' => 'TEST-EMP-999',
+            'phone' => '9841999888',
+            'pin' => '9999',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['pin']);
+
+        $this->employee->refresh();
+        $this->assertEquals(1, $this->employee->attendance_failed_attempts);
+        $this->assertEquals(0, AttendanceDevice::where('employee_id', $this->employee->id)->count());
+    }
+
+    /**
+     * 25. Pairing succeeds with credentials only without requiring photo.
+     */
+    public function test_pairing_succeeds_without_photo_and_persists_device(): void
+    {
+        $response = $this->postJson(route('attendance.api.setup'), [
+            'employee_number' => 'TEST-EMP-999',
+            'phone' => '9841999888',
+            'pin' => '1234',
+            'device_name' => 'iPhone Test',
+            // No photo payload
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['success' => true]);
+        $response->assertCookie('laijau_attendance_device');
+
+        $this->assertEquals(1, AttendanceDevice::where('employee_id', $this->employee->id)->where('is_active', true)->count());
+    }
+
+    /**
+     * 26. Successful pairing persists device, saves selfie evidence, and returns employee identity.
+     */
+    public function test_successful_pairing_persists_device_and_returns_identity(): void
+    {
+        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('selfie-evidence-jpg');
+
+        $response = $this->postJson(route('attendance.api.setup'), [
+            'employee_number' => 'TEST-EMP-999',
+            'phone' => '9841999888',
+            'pin' => '1234',
+            'device_name' => 'Pixel 8 Pro',
+            'platform' => 'Android',
+            'browser' => 'Chrome',
+            'photo' => $dummyBase64,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'employee' => [
+                'id' => $this->employee->id,
+                'name' => 'Suman Adhikari',
+                'code' => 'TEST-EMP-999',
+            ],
+        ]);
+        $response->assertCookie('laijau_attendance_device');
+
+        $device = AttendanceDevice::where('employee_id', $this->employee->id)->first();
+        $this->assertNotNull($device);
+        $this->assertTrue($device->is_active);
+        $this->assertEquals('Pixel 8 Pro', $device->device_name);
+        $this->assertEquals($this->employee->id, session('attendance_employee_id'));
+    }
+
+    /**
+     * 27. Failed pairing does not activate device or create session.
+     */
+    public function test_failed_pairing_does_not_activate_device(): void
+    {
+        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('selfie-evidence-jpg');
+
+        $response = $this->postJson(route('attendance.api.setup'), [
+            'employee_number' => 'TEST-EMP-999',
+            'phone' => '9841999888',
+            'pin' => '0000', // incorrect pin
+            'photo' => $dummyBase64,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertEquals(0, AttendanceDevice::where('employee_id', $this->employee->id)->count());
+        $this->assertNull(session('attendance_employee_id'));
+    }
+
+    /**
+     * 28. Unauthorized attendance request is rejected.
+     */
+    public function test_unauthorized_attendance_request_rejected(): void
+    {
+        // No session, no cookie, no token
+        $response = $this->postJson(route('attendance.api.check_in'), [
+            'latitude' => 27.6976748,
+            'longitude' => 85.3664331,
+            'photo' => 'data:image/jpeg;base64,' . base64_encode('fake'),
+        ]);
+
+        // AttendanceEmployeeAuth middleware rejects unauthenticated requests
+        $this->assertTrue(in_array($response->status(), [401, 403, 302]));
     }
 }

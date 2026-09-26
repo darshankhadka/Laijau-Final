@@ -13,7 +13,7 @@
     </h2>
 
     <p style="font-size:0.8125rem;color:var(--att-gray-600);line-height:1.5;max-width:320px;">
-        To ensure accurate server-authoritative timestamps, GPS verification, and photo submission, attendance requires an active internet connection.
+        To ensure accurate server-authoritative timestamps and GPS location verification, attendance requires an active internet connection.
     </p>
 
     <div style="width:100%;margin-top:1rem;">

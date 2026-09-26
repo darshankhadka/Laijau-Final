@@ -111,12 +111,6 @@ class AttendanceService
         $rawToken = bin2hex(random_bytes(32));
         $tokenHash = hash('sha256', $rawToken);
 
-        // Save verification setup photo if provided
-        $photoPath = null;
-        if (!empty($photoDataUrl)) {
-            $photoPath = $this->storeVerificationPhoto($photoDataUrl, $employee->id, 'setup');
-        }
-
         $device = AttendanceDevice::create([
             'employee_id' => $employee->id,
             'device_token_hash' => $tokenHash,
@@ -140,7 +134,7 @@ class AttendanceService
         return [
             'device' => $device,
             'device_token' => $rawToken,
-            'photo_path' => $photoPath,
+            'photo_path' => null,
         ];
     }
 
@@ -366,18 +360,8 @@ class AttendanceService
             }
         }
 
-        // 4. Photo Verification
-        $photoRequired = AttendanceSetting::get('photo_required', true);
-        if ($photoRequired && empty($photoDataUrl)) {
-            throw ValidationException::withMessages([
-                'photo' => ['Verification photo is required. Please capture a clear photo to proceed.'],
-            ]);
-        }
-
+        // 4. Photo Verification removed (location-only verification per policy)
         $photoPath = null;
-        if (!empty($photoDataUrl)) {
-            $photoPath = $this->storeVerificationPhoto($photoDataUrl, $employee->id, $type);
-        }
 
         // 5. Commit Transaction: Create Attendance Event & Update Location & Timesheet
         $event = DB::transaction(function () use (
@@ -506,11 +490,21 @@ class AttendanceService
                     $timesheet->attendance_status = 'present';
                     $timesheet->location = $event->location?->name ?? 'Laijau Showroom';
 
-                    // Check late calculation (default shift: 10:00:00)
-                    $shiftStart = Carbon::parse("{$date} 10:00:00");
-                    if ($event->server_recorded_at->greaterThan($shiftStart)) {
+                    // Check late calculation with shift_start_time and shift_grace_minutes from AttendanceSetting
+                    $shiftStartStr = AttendanceSetting::get('shift_start_time', '10:00:00');
+                    if (strlen($shiftStartStr) === 5) {
+                        $shiftStartStr .= ':00';
+                    }
+                    $shiftStart = Carbon::parse("{$date} {$shiftStartStr}");
+                    $graceMinutes = (int) AttendanceSetting::get('shift_grace_minutes', 15);
+                    $shiftStartWithGrace = (clone $shiftStart)->addMinutes($graceMinutes);
+
+                    if ($event->server_recorded_at->greaterThan($shiftStartWithGrace)) {
                         $timesheet->is_late = true;
                         $timesheet->late_minutes = (int) abs(round($event->server_recorded_at->diffInMinutes($shiftStart)));
+                    } else {
+                        $timesheet->is_late = false;
+                        $timesheet->late_minutes = 0;
                     }
                 }
             } elseif ($event->type === 'check_out') {
@@ -523,8 +517,27 @@ class AttendanceService
                     $in = Carbon::parse("{$date} {$timesheet->clock_in}");
                     $out = Carbon::parse("{$date} {$timeStr}");
                     $totalHours = max(0, round($out->diffInMinutes($in) / 60, 2));
-                    $timesheet->regular_hours = min(8.00, $totalHours);
-                    $timesheet->overtime_hours = max(0.00, round($totalHours - 8.00, 2));
+
+                    $shiftEndStr = AttendanceSetting::get('shift_end_time', '19:00:00');
+                    if (strlen($shiftEndStr) === 5) {
+                        $shiftEndStr .= ':00';
+                    }
+                    $shiftEnd = Carbon::parse("{$date} {$shiftEndStr}");
+                    if (AttendanceSetting::get('track_early_departure', true) && $event->server_recorded_at->lessThan($shiftEnd)) {
+                        $timesheet->is_early_departure = true;
+                        $timesheet->early_departure_minutes = (int) abs(round($shiftEnd->diffInMinutes($event->server_recorded_at)));
+                    } else {
+                        $timesheet->is_early_departure = false;
+                        $timesheet->early_departure_minutes = 0;
+                    }
+
+                    $stdDailyHours = (float) AttendanceSetting::get('standard_daily_hours', 8.00);
+                    $timesheet->regular_hours = min($stdDailyHours, $totalHours);
+                    if (AttendanceSetting::get('overtime_enabled', true) && $totalHours > $stdDailyHours) {
+                        $timesheet->overtime_hours = max(0.00, round($totalHours - $stdDailyHours, 2));
+                    } else {
+                        $timesheet->overtime_hours = 0.00;
+                    }
                 }
             }
 

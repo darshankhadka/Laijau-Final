@@ -26,6 +26,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        date_default_timezone_set('Asia/Kathmandu');
         require_once app_path('Helpers/helpers.php');
         \Illuminate\Database\Eloquent\Model::preventLazyLoading(!app()->isProduction());
         \Illuminate\Support\Facades\DB::prohibitDestructiveCommands(app()->isProduction() || config('database.connections.mysql.database') === 'LAIJAU');
@@ -33,6 +34,8 @@ class AppServiceProvider extends ServiceProvider
         if ((app()->isProduction() || str_starts_with((string) config('app.url'), 'https://')) && !str_contains((string) config('app.url'), '127.0.0.1') && !str_contains((string) config('app.url'), 'localhost')) {
             \Illuminate\Support\Facades\URL::forceScheme('https');
         }
+
+
 
         // Section 18: Layered Production Bot & Abuse Rate Limiters
         RateLimiter::for('login', function (Request $request) {

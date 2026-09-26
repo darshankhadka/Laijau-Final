@@ -395,8 +395,8 @@ class HrmService
     public function clockIn(Employee $employee, array $options = []): Timesheet
     {
         return DB::transaction(function () use ($employee, $options) {
-            $today = $options['date'] ?? now()->toDateString();
-            $nowTime = $options['time'] ?? now()->format('H:i:s');
+            $today = $options['date'] ?? now('Asia/Kathmandu')->toDateString();
+            $nowTime = $options['time'] ?? now('Asia/Kathmandu')->format('H:i:s');
 
             $timesheet = Timesheet::firstOrNew([
                 'employee_id' => $employee->id,
@@ -432,8 +432,8 @@ class HrmService
     public function clockOut(Employee $employee, array $options = []): Timesheet
     {
         return DB::transaction(function () use ($employee, $options) {
-            $today = $options['date'] ?? now()->toDateString();
-            $nowTime = $options['time'] ?? now()->format('H:i:s');
+            $today = $options['date'] ?? now('Asia/Kathmandu')->toDateString();
+            $nowTime = $options['time'] ?? now('Asia/Kathmandu')->format('H:i:s');
 
             $timesheet = Timesheet::where('employee_id', $employee->id)
                 ->where('date', $today)

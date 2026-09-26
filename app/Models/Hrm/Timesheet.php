@@ -82,15 +82,15 @@ class Timesheet extends Model
     {
         $settings = app(\App\Services\Settings\SettingsService::class);
         $taxConfig = PayrollTaxConfiguration::resolveForFiscalYear();
-        $standardDayHours = (float)($taxConfig->standard_daily_hours ?: 8.00);
+        $standardDayHours = (float) (\App\Models\Attendance\AttendanceSetting::get('standard_daily_hours', $taxConfig->standard_daily_hours ?: 8.00));
 
         // 1. Shift & Late Arrival Detection
         if ($this->clock_in) {
-            $shiftStart = $this->shift_start_time ?: '10:00:00';
+            $shiftStart = $this->shift_start_time ?: \App\Models\Attendance\AttendanceSetting::get('shift_start_time', '10:00:00');
             $shiftStartTime = Carbon::parse($this->date->format('Y-m-d') . ' ' . $shiftStart);
             $clockInTime = Carbon::parse($this->date->format('Y-m-d') . ' ' . $this->clock_in);
 
-            $graceMinutes = $settings->getInteger('hrm', 'shift_grace_minutes', 15);
+            $graceMinutes = (int) \App\Models\Attendance\AttendanceSetting::get('shift_grace_minutes', $settings->getInteger('hrm', 'shift_grace_minutes', 15));
             $shiftStartWithGrace = (clone $shiftStartTime)->addMinutes($graceMinutes);
 
             if ($clockInTime->greaterThan($shiftStartWithGrace)) {
@@ -107,15 +107,15 @@ class Timesheet extends Model
             $in = strtotime($this->clock_in);
             $out = strtotime($this->clock_out);
             $diffSeconds = max(0, $out - $in);
-            $breakSeconds = ($this->break_minutes ?? 0) * 60;
+            $breakSeconds = ($this->break_minutes ?? (int) \App\Models\Attendance\AttendanceSetting::get('break_minutes', 0)) * 60;
             $workedSeconds = max(0, $diffSeconds - $breakSeconds);
             $totalHours = round($workedSeconds / 3600, 2);
 
-            $shiftEnd = $this->shift_end_time ?: '19:00:00';
+            $shiftEnd = $this->shift_end_time ?: \App\Models\Attendance\AttendanceSetting::get('shift_end_time', '19:00:00');
             $shiftEndTime = Carbon::parse($this->date->format('Y-m-d') . ' ' . $shiftEnd);
             $clockOutTime = Carbon::parse($this->date->format('Y-m-d') . ' ' . $this->clock_out);
 
-            if ($clockOutTime->lessThan($shiftEndTime)) {
+            if (\App\Models\Attendance\AttendanceSetting::get('track_early_departure', true) && $clockOutTime->lessThan($shiftEndTime)) {
                 $this->is_early_departure = true;
                 $this->early_departure_minutes = abs((int)$shiftEndTime->diffInMinutes($clockOutTime));
             } else {

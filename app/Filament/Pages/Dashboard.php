@@ -71,7 +71,8 @@ class Dashboard extends BaseDashboard
             Action::make('pos_sale')
                 ->label('+ POS Sale')
                 ->icon('heroicon-m-shopping-bag')
-                ->url(route('filament.admin.pages.offline-sales'))
+                ->url(url('/intadmin/offline-sales/POS'))
+                ->openUrlInNewTab(true)
                 ->color('warning')
                 ->outlined()
                 ->size('sm'),

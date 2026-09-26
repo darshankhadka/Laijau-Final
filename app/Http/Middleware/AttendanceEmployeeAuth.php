@@ -47,14 +47,23 @@ class AttendanceEmployeeAuth
 
             if ($request->expectsJson()) {
                 return response()->json([
-                    'error' => 'Unauthenticated attendance session. Please sign in with your PIN or register your device.',
+                    'error' => 'Unauthenticated attendance session. Please register your device.',
                     'requires_auth' => true,
                 ], 401);
             }
 
-            // Check if device is recognized to direct to PIN login vs fresh setup
-            $hasDevice = (bool) ($request->cookie('laijau_attendance_device') || $request->header('X-Device-Token'));
-            return redirect()->route($hasDevice ? 'attendance.login' : 'attendance.setup');
+            // Unrecognized devices go directly to login / device pairing
+            return redirect()->route('attendance.login');
+        }
+
+        // Persist session if re-established from device token
+        if (!session('attendance_employee_id') || !session('attendance_device_id')) {
+            session([
+                'attendance_employee_id' => $employee->id,
+                'attendance_device_id' => $device->id,
+                'attendance_auth_time' => now()->timestamp,
+            ]);
+            $device->touchLastSeen($request->ip());
         }
 
         // Store resolved employee and device on request attributes for controllers

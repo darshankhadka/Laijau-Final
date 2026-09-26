@@ -72,7 +72,7 @@
             </div>
         </div>
 
-        <!-- Location & Verification Status -->
+        <!-- Location & Status Verification Notice -->
         <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.75rem;color:var(--att-gray-600);">
             <span style="display:flex;align-items:center;gap:0.35rem;">
                 <span>📍</span>
@@ -82,7 +82,7 @@
             <template x-if="status.state === 'checked_in'">
                 <span style="color:var(--att-emerald);font-weight:700;display:flex;align-items:center;gap:0.25rem;">
                     <span style="width:6px;height:6px;border-radius:9999px;background:currentColor;"></span>
-                    Location Verified
+                    Active Shift
                 </span>
             </template>
         </div>
@@ -94,11 +94,16 @@
         <template x-if="status.state === 'not_checked_in'">
             <button
                 type="button"
-                @click="openPunchModal('check_in')"
+                @click="punchAttendance('check_in')"
+                :disabled="punchLoading"
                 class="att-btn att-btn-emerald"
                 style="min-height:3.75rem;font-size:1.1rem;font-weight:800;letter-spacing:0.02em;">
-                <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
-                <span>CHECK IN</span>
+                <svg x-show="!punchLoading" width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                <svg x-show="punchLoading" style="animation:spin 1s linear infinite;width:20px;height:20px;" fill="none" viewBox="0 0 24 24">
+                    <circle style="opacity:0.25;" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path style="opacity:0.75;" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span x-text="punchLoading ? 'Verifying Location & Checking In...' : 'CHECK IN'"></span>
             </button>
         </template>
 
@@ -106,11 +111,16 @@
         <template x-if="status.state === 'checked_in'">
             <button
                 type="button"
-                @click="openPunchModal('check_out')"
+                @click="punchAttendance('check_out')"
+                :disabled="punchLoading"
                 class="att-btn att-btn-rose"
                 style="min-height:3.75rem;font-size:1.1rem;font-weight:800;letter-spacing:0.02em;">
-                <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
-                <span>CHECK OUT</span>
+                <svg x-show="!punchLoading" width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                <svg x-show="punchLoading" style="animation:spin 1s linear infinite;width:20px;height:20px;" fill="none" viewBox="0 0 24 24">
+                    <circle style="opacity:0.25;" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path style="opacity:0.75;" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span x-text="punchLoading ? 'Verifying Location & Checking Out...' : 'CHECK OUT'"></span>
             </button>
         </template>
 
@@ -125,28 +135,25 @@
             </button>
         </template>
 
-        <!-- Home GPS Status Banner (Visible if permission denied or error detected) -->
-        <template x-if="gpsErrorType">
+        <!-- Error Banner (GPS or Geofence notice) -->
+        <template x-if="punchErrorMessage">
             <div style="padding:0.75rem 1rem;border-radius:var(--att-radius);background:#fef2f2;border:1px solid #fecaca;color:#991b1b;display:flex;align-items:flex-start;gap:0.75rem;font-size:0.75rem;">
                 <div style="font-size:1.25rem;line-height:1;">⚠️</div>
                 <div style="flex:1;">
-                    <div style="font-weight:800;font-size:0.8125rem;">Location Required for Attendance</div>
-                    <div style="font-size:0.75rem;margin-top:0.25rem;line-height:1.4;" x-text="gpsErrorMessage"></div>
+                    <div style="font-weight:800;font-size:0.8125rem;">Location Verification Notice</div>
+                    <div style="font-size:0.75rem;margin-top:0.25rem;line-height:1.4;" x-text="punchErrorMessage"></div>
                 </div>
                 <button
                     type="button"
-                    @click="requestGps()"
-                    :disabled="gpsLoading"
-                    class="att-btn att-btn-outline"
-                    style="width:auto;min-height:2.25rem;padding:0.25rem 0.75rem;font-size:0.75rem;font-weight:800;white-space:nowrap;align-self:center;">
-                    <span x-show="!gpsLoading">🔄 Retry Location</span>
-                    <span x-show="gpsLoading">Locating...</span>
+                    @click="punchErrorMessage = null"
+                    style="background:none;border:none;color:#991b1b;font-weight:800;font-size:1.1rem;cursor:pointer;">
+                    ×
                 </button>
             </div>
         </template>
 
         <div style="text-align:center;font-size:0.6875rem;color:var(--att-gray-500);">
-            Requires mandatory GPS location & verification photo
+            Location verified upon punch &bull; No camera or photo required
         </div>
     </div>
 
@@ -187,125 +194,8 @@
         </button>
 
         <span style="color:var(--att-gray-500);font-size:0.6875rem;">
-            Device: {{ $device->device_name ?? 'Mobile' }}
+            Device: {{ $device->device_name ?? 'Mobile Device' }}
         </span>
-    </div>
-
-    <!-- ========================================================================= -->
-    <!-- ATTENDANCE PUNCH MODAL (CAMERA + GPS VERIFICATION) -->
-    <!-- ========================================================================= -->
-    <div
-        x-show="showPunchModal"
-        x-cloak
-        style="position:fixed;inset:0;background:rgba(0,15,43,0.7);z-index:90;display:flex;align-items:flex-end;justify-content:center;">
-
-        <div
-            @click.away="closePunchModal()"
-            style="width:100%;max-width:440px;background:#ffffff;border-radius:1.5rem 1.5rem 0 0;padding:1.5rem;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:1rem;animation:att-slide-up 0.25s ease-out;">
-
-            <div style="display:flex;align-items:center;justify-content:space-between;">
-                <div>
-                    <h3 style="font-size:1.1rem;font-weight:900;color:var(--att-navy);margin:0;" x-text="punchType === 'check_in' ? 'Check In Verification' : 'Check Out Verification'"></h3>
-                    <p style="font-size:0.75rem;color:var(--att-gray-500);margin:0;">Take photo and verify GPS location</p>
-                </div>
-                <button type="button" @click="closePunchModal()" style="width:2rem;height:2rem;border-radius:9999px;background:var(--att-gray-100);border:none;cursor:pointer;font-size:1.1rem;font-weight:700;">✕</button>
-            </div>
-
-            <!-- GPS Status Banner -->
-            <div style="padding:0.75rem 1rem;border-radius:var(--att-radius-sm);border:1px solid;display:flex;align-items:flex-start;gap:0.75rem;font-size:0.75rem;"
-                 :style="gpsAcquired
-                    ? 'background:#ecfdf5;border-color:#a7f3d0;color:#065f46;'
-                    : (gpsErrorType ? 'background:#fef2f2;border-color:#fecaca;color:#991b1b;' : 'background:#fffbeb;border-color:#fde68a;color:#92400e;')">
-
-                <div style="font-size:1.25rem;line-height:1;" x-text="gpsAcquired ? '📍' : (gpsErrorType ? '⚠️' : '⏳')"></div>
-
-                <div style="flex:1;">
-                    <div style="font-weight:800;font-size:0.8125rem;"
-                         x-text="gpsAcquired ? 'Live GPS Position Verified' : (gpsLoading ? 'Acquiring GPS Position...' : 'GPS Verification Required')">
-                    </div>
-                    <div style="font-size:0.75rem;margin-top:0.25rem;line-height:1.4;" x-text="gpsDetails"></div>
-                </div>
-
-                <button
-                    type="button"
-                    @click="requestGps(punchType)"
-                    :disabled="gpsLoading"
-                    class="att-btn att-btn-outline"
-                    style="width:auto;min-height:2.25rem;padding:0.25rem 0.75rem;font-size:0.75rem;font-weight:800;white-space:nowrap;align-self:center;">
-                    <span x-show="!gpsLoading">🔄 Retry Location</span>
-                    <span x-show="gpsLoading">Locating...</span>
-                </button>
-            </div>
-
-            <!-- Camera Viewfinder / Preview Box -->
-            <div style="position:relative;width:100%;max-width:280px;height:280px;margin:0 auto;border-radius:1.25rem;overflow:hidden;background:#0f172a;box-shadow:inset 0 2px 8px rgba(0,0,0,0.4);border:2px solid var(--att-gray-300);">
-                <!-- Live Video Feed -->
-                <video
-                    x-ref="modalVideo"
-                    autoplay
-                    playsinline
-                    muted
-                    x-show="!modalPhoto"
-                    style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);">
-                </video>
-
-                <!-- Captured Image Preview -->
-                <img
-                    :src="modalPhoto"
-                    x-show="modalPhoto"
-                    style="width:100%;height:100%;object-fit:cover;"
-                    alt="Attendance Verification Snapshot">
-
-                <div x-show="!modalPhoto" style="position:absolute;inset:20px;border:2px dashed rgba(255,255,255,0.4);border-radius:9999px;pointer-events:none;"></div>
-            </div>
-
-            <canvas x-ref="modalCanvas" style="display:none;"></canvas>
-
-            <!-- Camera Snapshot Actions -->
-            <div style="display:flex;gap:0.5rem;justify-content:center;">
-                <button
-                    type="button"
-                    x-show="!modalPhoto"
-                    @click="captureModalSnapshot()"
-                    class="att-btn att-btn-emerald"
-                    style="width:auto;min-width:180px;">
-                    📸 Capture Photo
-                </button>
-
-                <button
-                    type="button"
-                    x-show="modalPhoto"
-                    @click="retakeModalSnapshot()"
-                    class="att-btn att-btn-outline"
-                    style="width:auto;">
-                    🔄 Retake
-                </button>
-
-                <label class="att-btn att-btn-outline" style="width:auto;cursor:pointer;" title="Choose photo from camera">
-                    <span>📁 Gallery</span>
-                    <input type="file" accept="image/*" capture="user" @change="handleModalFile($event)" style="display:none;">
-                </label>
-            </div>
-
-            <!-- Error message if submission or geofence fails -->
-            <template x-if="punchError">
-                <div style="padding:0.75rem 1rem;background:#fee2e2;border:1px solid #f87171;border-radius:var(--att-radius);color:#991b1b;font-size:0.75rem;font-weight:600;">
-                    <span x-text="punchError"></span>
-                </div>
-            </template>
-
-            <!-- Final Submit Button -->
-            <button
-                type="button"
-                @click="submitPunch()"
-                :disabled="!modalPhoto || !gpsAcquired || punchLoading"
-                class="att-btn"
-                :class="punchType === 'check_in' ? 'att-btn-emerald' : 'att-btn-rose'"
-                style="min-height:3.25rem;font-size:1rem;font-weight:800;">
-                <span x-show="!punchLoading" x-text="punchType === 'check_in' ? 'Confirm Check In' : 'Confirm Check Out'"></span>
-                <span x-show="punchLoading">Recording Attendance...</span>
-            </button>
-        </div>
     </div>
 
     <!-- ========================================================================= -->
@@ -367,19 +257,9 @@ function attendanceDashboard(initialStatus, settings) {
         greetingText: 'Good Day',
         liveTime: '',
         liveDate: '',
-        showPunchModal: false,
-        punchType: 'check_in',
         punchLoading: false,
-        punchError: null,
-        modalPhoto: null,
-        modalStream: null,
-        gpsAcquired: false,
-        gpsLoading: false,
-        gpsCoords: null,
-        gpsAccuracy: null,
-        gpsErrorType: null, // 'permission_denied', 'position_unavailable', 'accuracy_low', 'timeout', 'unsupported'
-        gpsErrorMessage: '',
-        gpsDetails: 'Requesting location permission...',
+        punchType: null,
+        punchErrorMessage: null,
         toastMessage: null,
         toastType: 'success',
         showPinChangeModal: false,
@@ -393,10 +273,10 @@ function attendanceDashboard(initialStatus, settings) {
             this.updateClock();
             setInterval(() => this.updateClock(), 1000);
 
-            // Request GPS immediately to verify permissions
-            this.requestGps();
+            // Fetch latest server-side status to ensure perfect synchronization
+            this.refreshServerStatus();
 
-            // Setup periodic location heartbeat while PWA is actively open (every 3 minutes)
+            // Periodic location heartbeat while active in foreground (every 3 minutes)
             const hbInterval = (this.settings.heartbeat_interval_seconds || 180) * 1000;
             this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), hbInterval);
         },
@@ -420,242 +300,106 @@ function attendanceDashboard(initialStatus, settings) {
             setTimeout(() => { this.toastMessage = null; }, 4000);
         },
 
-        requestGps(actionType = null) {
-            this.gpsAcquired = false;
-            this.gpsLoading = true;
-            this.gpsErrorType = null;
-            this.gpsErrorMessage = '';
-            this.gpsDetails = 'Acquiring GPS fix...';
+        async refreshServerStatus() {
+            try {
+                const cachedToken = localStorage.getItem('laijau_att_token');
+                const res = await fetch('/attendance/api/status', {
+                    headers: {
+                        'Accept': 'application/json',
+                        ...(cachedToken ? { 'X-Device-Token': cachedToken } : {})
+                    }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.state) {
+                        this.status = data.state;
+                    }
+                }
+            } catch (e) {
+                // Keep initial server-rendered status
+            }
+        },
+
+        punchAttendance(type) {
+            this.punchLoading = true;
+            this.punchType = type;
+            this.punchErrorMessage = null;
 
             if (!navigator.geolocation) {
-                this.gpsLoading = false;
-                this.gpsErrorType = 'unsupported';
-                this.gpsErrorMessage = 'Geolocation is not supported by your browser or device.';
-                this.gpsDetails = this.gpsErrorMessage;
+                this.punchLoading = false;
+                this.punchErrorMessage = 'Geolocation is not supported by your browser or device.';
                 return;
             }
 
+            // GPS is requested ONLY when Clock In or Clock Out is pressed
             navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    this.gpsLoading = false;
+                async (pos) => {
                     const lat = pos.coords.latitude;
                     const lon = pos.coords.longitude;
                     const acc = Math.round(pos.coords.accuracy);
 
-                    if (lat === null || lon === null || isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-                        this.gpsAcquired = false;
-                        this.gpsErrorType = 'invalid_coords';
-                        this.gpsErrorMessage = 'GPS returned invalid coordinates. Please retry in an open area.';
-                        this.gpsDetails = this.gpsErrorMessage;
-                        return;
-                    }
-
                     const maxAcc = this.settings?.max_gps_accuracy_meters || 100;
                     if (acc > maxAcc) {
-                        this.gpsAcquired = false;
-                        this.gpsErrorType = 'accuracy_low';
-                        this.gpsAccuracy = acc;
-                        this.gpsErrorMessage = `Location accuracy is too low (measured: ±${acc}m, required: within ${maxAcc}m). Please move to an open area and try again.`;
-                        this.gpsDetails = this.gpsErrorMessage;
-                        this.logGpsFailure(actionType || this.punchType || 'check_in', 'accuracy_low', this.gpsErrorMessage, acc);
+                        this.punchLoading = false;
+                        this.punchErrorMessage = `GPS accuracy is too low (measured: ±${acc}m, required: within ${maxAcc}m). Please move to an open area and try again.`;
                         return;
                     }
 
-                    this.gpsAcquired = true;
-                    this.gpsErrorType = null;
-                    this.gpsErrorMessage = '';
-                    this.gpsCoords = { latitude: lat, longitude: lon };
-                    this.gpsAccuracy = acc;
-                    this.gpsDetails = `Accuracy: ±${acc}m (Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)})`;
+                    const endpoint = type === 'check_in' ? '/attendance/api/check-in' : '/attendance/api/check-out';
+                    const cachedToken = localStorage.getItem('laijau_att_token');
+                    const idempotencyKey = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+                    try {
+                        const res = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                'Accept': 'application/json',
+                                ...(cachedToken ? { 'X-Device-Token': cachedToken } : {})
+                            },
+                            body: JSON.stringify({
+                                latitude: lat,
+                                longitude: lon,
+                                accuracy_meters: acc,
+                                client_captured_at: new Date().toISOString(),
+                                idempotency_key: idempotencyKey,
+                                verification_method: 'gps_verified'
+                            })
+                        });
+
+                        const data = await res.json();
+                        if (!res.ok) {
+                            this.punchErrorMessage = data.errors?.geofence?.[0] || data.errors?.gps?.[0] || data.error || data.message || 'Location verification failed.';
+                            this.punchLoading = false;
+                            return;
+                        }
+
+                        // Persist authoritative attendance state returned from server
+                        this.status = data.state;
+                        this.showToast(data.message || (type === 'check_in' ? 'Checked in successfully!' : 'Checked out successfully!'));
+                        if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+                        this.punchLoading = false;
+                        this.punchErrorMessage = null;
+                    } catch (err) {
+                        this.punchLoading = false;
+                        this.punchErrorMessage = 'Network error while recording attendance. Please retry.';
+                    }
                 },
                 (err) => {
-                    this.gpsLoading = false;
-                    this.gpsAcquired = false;
-                    this.gpsCoords = null;
-                    this.gpsAccuracy = null;
-
+                    this.punchLoading = false;
                     if (err.code === 1 || err.code === err.PERMISSION_DENIED) {
-                        this.gpsErrorType = 'permission_denied';
-                        this.gpsErrorMessage = 'Location permission is required to record attendance. Please enable Location access and try again.';
+                        this.punchErrorMessage = 'Location permission is required to record attendance. Please enable Location in your device settings.';
                     } else if (err.code === 2 || err.code === err.POSITION_UNAVAILABLE) {
-                        this.gpsErrorType = 'position_unavailable';
-                        this.gpsErrorMessage = 'Please turn on Location Services and try again.';
+                        this.punchErrorMessage = 'GPS position unavailable. Please ensure location services are turned on.';
                     } else if (err.code === 3 || err.code === err.TIMEOUT) {
-                        this.gpsErrorType = 'timeout';
-                        this.gpsErrorMessage = 'GPS request timed out. Please move to an open area and try again.';
+                        this.punchErrorMessage = 'GPS request timed out. Please move to an open area and try again.';
                     } else {
-                        this.gpsErrorType = 'unknown';
-                        this.gpsErrorMessage = err.message || 'Unable to determine your GPS location. Please retry.';
+                        this.punchErrorMessage = err.message || 'Unable to retrieve GPS coordinates.';
                     }
-                    this.gpsDetails = this.gpsErrorMessage;
-
-                    this.logGpsFailure(actionType || this.punchType || 'check_in', this.gpsErrorType, this.gpsErrorMessage);
                 },
                 { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
             );
-        },
-
-        async logGpsFailure(actionType, errorType, message, accuracy = null) {
-            try {
-                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
-                if (!csrfMeta) return;
-
-                await fetch('/attendance/api/log-gps-failure', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfMeta.getAttribute('content'),
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        action_type: actionType,
-                        error_type: errorType,
-                        message: message,
-                        accuracy: accuracy,
-                    })
-                });
-            } catch (e) {
-                // Silently ignore log network failure
-            }
-        },
-
-        openPunchModal(type) {
-            this.punchType = type;
-            this.punchError = null;
-            this.modalPhoto = null;
-            this.showPunchModal = true;
-            this.requestGps(type);
-            this.$nextTick(() => this.startModalCamera());
-        },
-
-        closePunchModal() {
-            this.showPunchModal = false;
-            this.stopModalCamera();
-        },
-
-        async startModalCamera() {
-            try {
-                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    this.modalStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } },
-                        audio: false,
-                    });
-                    if (this.$refs.modalVideo) {
-                        this.$refs.modalVideo.srcObject = this.modalStream;
-                    }
-                }
-            } catch (e) {
-                console.warn('Camera error:', e);
-            }
-        },
-
-        stopModalCamera() {
-            if (this.modalStream) {
-                this.modalStream.getTracks().forEach(t => t.stop());
-                this.modalStream = null;
-            }
-        },
-
-        captureModalSnapshot() {
-            const video = this.$refs.modalVideo;
-            const canvas = this.$refs.modalCanvas;
-            if (!video || !canvas) return;
-
-            const size = Math.min(video.videoWidth || 480, video.videoHeight || 480, 600);
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext('2d');
-            ctx.translate(size, 0);
-            ctx.scale(-1, 1);
-            ctx.drawImage(video, 0, 0, size, size);
-
-            this.modalPhoto = canvas.toDataURL('image/jpeg', 0.75);
-            this.punchError = null;
-        },
-
-        retakeModalSnapshot() {
-            this.modalPhoto = null;
-            this.startModalCamera();
-        },
-
-        handleModalFile(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = this.$refs.modalCanvas;
-                    const maxDim = 600;
-                    let w = img.width;
-                    let h = img.height;
-                    if (w > maxDim || h > maxDim) {
-                        if (w > h) { h = Math.round(h * (maxDim / w)); w = maxDim; }
-                        else { w = Math.round(w * (maxDim / h)); h = maxDim; }
-                    }
-                    canvas.width = w;
-                    canvas.height = h;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, w, h);
-                    this.modalPhoto = canvas.toDataURL('image/jpeg', 0.75);
-                };
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        },
-
-        async submitPunch() {
-            if (!this.modalPhoto) {
-                this.punchError = 'Please capture an attendance verification photo.';
-                return;
-            }
-
-            if (!this.gpsAcquired || !this.gpsCoords) {
-                this.punchError = this.gpsErrorMessage || 'Location permission is required to record attendance. Please enable Location access and try again.';
-                return;
-            }
-
-            this.punchLoading = true;
-            this.punchError = null;
-
-            // Generate unique idempotency key
-            const idempotencyKey = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-            const endpoint = this.punchType === 'check_in' ? '/attendance/api/check-in' : '/attendance/api/check-out';
-
-            try {
-                const res = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        latitude: this.gpsCoords?.latitude,
-                        longitude: this.gpsCoords?.longitude,
-                        accuracy_meters: this.gpsAccuracy,
-                        client_captured_at: new Date().toISOString(),
-                        photo: this.modalPhoto,
-                        idempotency_key: idempotencyKey,
-                        verification_method: 'pin',
-                    })
-                });
-
-                const data = await res.json();
-                if (!res.ok) {
-                    this.punchError = data.errors?.geofence?.[0] || data.errors?.gps?.[0] || data.errors?.photo?.[0] || data.error || data.message || 'Verification failed.';
-                    return;
-                }
-
-                this.status = data.state;
-                this.showToast(data.message || 'Attendance recorded successfully!');
-                this.closePunchModal();
-            } catch (e) {
-                this.punchError = 'Network error while recording attendance. Please retry.';
-            } finally {
-                this.punchLoading = false;
-            }
         },
 
         async sendHeartbeat() {
@@ -664,12 +408,14 @@ function attendanceDashboard(initialStatus, settings) {
 
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 try {
+                    const cachedToken = localStorage.getItem('laijau_att_token');
                     await fetch('/attendance/api/heartbeat', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                             'Accept': 'application/json',
+                            ...(cachedToken ? { 'X-Device-Token': cachedToken } : {})
                         },
                         body: JSON.stringify({
                             latitude: pos.coords.latitude,
@@ -692,12 +438,14 @@ function attendanceDashboard(initialStatus, settings) {
 
             this.pinLoading = true;
             try {
+                const cachedToken = localStorage.getItem('laijau_att_token');
                 const res = await fetch('/attendance/api/auth/change-pin', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                         'Accept': 'application/json',
+                        ...(cachedToken ? { 'X-Device-Token': cachedToken } : {})
                     },
                     body: JSON.stringify(this.pinForm)
                 });

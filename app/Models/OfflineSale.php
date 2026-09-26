@@ -21,6 +21,9 @@ class OfflineSale extends Model
         'customer_email',
         'customer_phone',
         'warehouse_id',
+        'pos_session_id',
+        'pos_station_id',
+        'business_date',
         'cash_received',
         'change_given',
         'currency',
@@ -52,6 +55,7 @@ class OfflineSale extends Model
         return [
             'sold_at' => 'datetime',
             'voided_at' => 'datetime',
+            'business_date' => 'date:Y-m-d',
             'exchange_rate_to_npr' => 'decimal:6',
             'subtotal' => 'decimal:2',
             'discount_amount' => 'decimal:2',
@@ -70,6 +74,21 @@ class OfflineSale extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(\App\Models\Inventory\Warehouse::class, 'warehouse_id');
+    }
+
+    public function session(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Pos\PosSession::class, 'pos_session_id');
+    }
+
+    public function posSession(): BelongsTo
+    {
+        return $this->session();
+    }
+
+    public function station(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Hardware\PosStation::class, 'pos_station_id');
     }
 
     public function items(): HasMany

@@ -43,18 +43,6 @@ class AttendancePwaController extends Controller
         return view('attendance.dashboard', compact('employee', 'device', 'status', 'recentHistory', 'defaultLocation', 'settings'));
     }
 
-    /**
-     * First-time Employee Setup & Device Registration Screen.
-     */
-    public function setup(Request $request)
-    {
-        // If employee is already authenticated, redirect straight to dashboard
-        if (session('attendance_employee_id') && session('attendance_device_id')) {
-            return redirect()->route('attendance.dashboard');
-        }
-
-        return view('attendance.setup');
-    }
 
     /**
      * Subsequent Login / Unlock Screen for Registered Devices.

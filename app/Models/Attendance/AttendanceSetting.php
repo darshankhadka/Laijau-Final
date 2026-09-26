@@ -41,13 +41,30 @@ class AttendanceSetting extends Model
             'gps_required',
             'photo_required',
             'geofencing_enabled',
+            'track_early_departure',
+            'overtime_enabled',
+            'allow_manual_checkout',
             'require_passkey_optional' => (bool) $raw,
 
             'max_gps_accuracy_meters',
             'heartbeat_interval_seconds',
             'max_allowed_devices',
             'max_failed_attempts',
-            'lockout_minutes' => (int) $raw,
+            'lockout_minutes',
+            'geofence_radius_meters',
+            'shift_grace_minutes',
+            'late_threshold_minutes',
+            'break_minutes' => (int) $raw,
+
+            'standard_daily_hours',
+            'standard_weekly_hours',
+            'overtime_multiplier',
+            'annual_home_leave_days',
+            'annual_sick_leave_days',
+            'annual_festival_leave_days' => (float) $raw,
+
+            'working_days',
+            'off_days' => is_string($raw) ? json_decode($raw, true) : (array) $raw,
 
             default => $raw,
         };
@@ -58,10 +75,14 @@ class AttendanceSetting extends Model
      */
     public static function set(string $key, mixed $value, string $type = 'string', ?string $description = null): void
     {
+        $valToStore = is_bool($value)
+            ? ($value ? '1' : '0')
+            : (is_array($value) ? json_encode(array_values($value)) : (string) $value);
+
         self::updateOrCreate(
             ['key' => $key],
             [
-                'value' => is_bool($value) ? ($value ? '1' : '0') : (string) $value,
+                'value' => $valToStore,
                 'type' => $type,
                 'description' => $description,
             ]

@@ -314,6 +314,104 @@ class OfflineSalesTest extends TestCase
     }
 
     /**
+     * Test upgraded POS dashboard analytics with cash/digital split, drawer reconciliation, and Livewire controls.
+     */
+    public function test_pos_dashboard_upgraded_analytics(): void
+    {
+        $admin = User::firstOrCreate(
+            ['email' => 'admin@laijau.com'],
+            ['name' => 'Admin User', 'password' => bcrypt('password')]
+        );
+
+        $service = app(OfflineSaleService::class);
+        $uDash = uniqid();
+        $prod = Product::create(['name' => 'POS Item ' . $uDash, 'slug' => 'pos-item-' . $uDash, 'sku' => 'POS-' . $uDash, 'is_active' => true]);
+        $var = ProductVariant::create([
+            'product_id' => $prod->id,
+            'sku' => 'POS-VAR-' . $uDash,
+            'stock_quantity' => 100,
+            'price_npr' => 1000.00,
+            'is_active' => true,
+        ]);
+
+        // Sale with cash and change returned: 1000 sale, 2000 tendered, 1000 change
+        $service->createSale(
+            [
+                'customer_name' => 'Till Test Cash',
+                'payment_method' => 'cash',
+                'sales_channel' => 'showroom',
+                'cash_received' => 2000.00,
+                'change_given' => 1000.00,
+                'staff_name' => 'Cashier Alpha',
+            ],
+            [['product_id' => $prod->id, 'variant_id' => $var->id, 'quantity' => 1, 'unit_price' => 1000.00]]
+        );
+
+        // Sale with split payment: 1000 sale, 400 cash, 600 fonepay
+        $service->createSale(
+            [
+                'customer_name' => 'Till Test Split',
+                'payment_method' => 'split',
+                'sales_channel' => 'showroom',
+                'cash_received' => 400.00,
+                'staff_name' => 'Cashier Beta',
+            ],
+            [['product_id' => $prod->id, 'variant_id' => $var->id, 'quantity' => 1, 'unit_price' => 1000.00]]
+        );
+
+        // Verify metrics service
+        $metrics = $service->getDashboardMetrics(['period' => 'today']);
+        $this->assertGreaterThanOrEqual(1400.00, $metrics['payment_analytics']['cash_vs_digital']['physical_cash_total']);
+        $this->assertGreaterThanOrEqual(600.00, $metrics['payment_analytics']['cash_vs_digital']['digital_total']);
+        $this->assertGreaterThanOrEqual(2400.00, $metrics['payment_analytics']['drawer_reconciliation']['cash_tendered']);
+        $this->assertGreaterThanOrEqual(1000.00, $metrics['payment_analytics']['drawer_reconciliation']['change_returned']);
+        $this->assertGreaterThanOrEqual(1400.00, $metrics['payment_analytics']['drawer_reconciliation']['net_cash_in_drawer']);
+        $this->assertCount(14, $metrics['hourly_distribution']);
+        $this->assertIsArray($metrics['all_sales']);
+        $this->assertIsArray($metrics['discounted_sales']);
+        $this->assertIsArray($metrics['major_events']);
+        $this->assertNotEmpty($metrics['major_events']);
+
+        // Verify Livewire dashboard UI rendering
+        \Livewire\Livewire::actingAs($admin)
+            ->test(\App\Filament\Pages\OfflineSales::class)
+            ->call('setTab', 'dashboard')
+            ->assertSee('Physical Cash in Till')
+            ->assertSee('CASH DRAWER BALANCING')
+            ->assertSee('Net Till Cash')
+            ->assertSee('Payment Method Distribution')
+            ->assertSee('Hourly Showroom Traffic')
+            ->assertSee('Top Performing Products in POS')
+            ->assertSee('Print Shift Report')
+            // Test opening and closing finalized Shift Report Modal with all sales journal, discounts audit, and major events
+            ->call('openModal', 'shift_report')
+            ->assertSet('activeModal', 'shift_report')
+            ->assertSee('POS REGISTER SHIFT REPORT')
+            ->assertSee('1. SALES SUMMARY')
+            ->assertSee('2. CASH DRAWER (TILL RECONCILIATION)')
+            ->assertSee('EXPECTED IN CASH TILL')
+            ->assertSee('3. PAYMENT BREAKDOWN')
+            ->assertSee('TOTAL DIGITAL SETTLEMENT')
+            ->assertSee('4. ALL SALES JOURNAL')
+            ->assertSee('5. DISCOUNTS GIVEN AUDIT')
+            ->assertSee('6. MAJOR OPERATIONAL EVENTS LOG')
+            ->assertSee('7. TILL BALANCING')
+            ->assertSee('Cashier Signature')
+            ->assertSee('Manager Sign-off')
+            ->assertSee('Print Thermal (80mm)')
+            ->assertSee('Standard (A4 / PDF)')
+            ->call('closeModal')
+            ->assertSet('activeModal', null)
+            ->call('setDashboardPeriod', 'month')
+            ->assertSet('dashboardPeriod', 'month')
+            ->set('dashboardPaymentMethod', 'cash')
+            ->assertSet('dashboardPaymentMethod', 'cash')
+            ->call('resetDashboardFilters')
+            ->assertSet('dashboardPeriod', 'today')
+            ->assertSet('dashboardPaymentMethod', '');
+    }
+
+    /**
      * Test admin authorization for Offline Sales routes.
      */
     public function test_admin_authorization(): void
@@ -362,6 +460,9 @@ class OfflineSalesTest extends TestCase
             ->assertSee('Sales History')
             ->assertSee('Dashboard')
             ->assertSee('Product Metrics')
+            // Open session with opening cash float
+            ->set('openingCashInput', 1000.00)
+            ->call('openDailySession')
             // Add product to cart
             ->call('addToCart', $product->id, $variant->id, 1)
             ->assertSee('Royal Himalayan Shawl')
@@ -393,4 +494,165 @@ class OfflineSalesTest extends TestCase
             'total_amount' => 1710.00,
         ]);
     }
+
+    /**
+     * Test Open Shift cash float input and live calculation.
+     */
+    public function test_open_shift_denomination_counting_and_live_calculation(): void
+    {
+        /** @var User $admin */
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->actingAs($admin);
+
+        \Livewire\Livewire::test(\App\Filament\Pages\OfflineSales::class)
+            ->call('openModal', 'open_session')
+            ->assertSet('activeModal', 'open_session')
+            ->assertSee('Open Daily POS Shift')
+            ->assertSee('Count Physical Cash Float')
+            ->assertSee('Opening Cash Total: Rs.')
+            // Enter direct cash float input
+            ->set('openingCashInput', 6350.00)
+            ->assertSet('openingCashInput', 6350.00)
+            ->assertSee('Opening Cash Total: Rs. 6,350.00');
+    }
+
+    /**
+     * Test Close Shift cash float reconciliation and shortage handling.
+     */
+    public function test_close_shift_denomination_reconciliation_and_shortage_handling(): void
+    {
+        /** @var User $admin */
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->actingAs($admin);
+
+        $test = \Livewire\Livewire::test(\App\Filament\Pages\OfflineSales::class)
+            ->call('openCloseSessionModal')
+            ->assertSet('activeModal', 'close_session')
+            ->assertSee('Count Physical Cash Float')
+            ->assertSee('Expected Cash')
+            ->assertSee('Physical Counted')
+            ->assertSee('Difference / Variance');
+
+        $expected = (float)($test->instance()->closingSessionDetails['calc']['expected_cash'] ?? 5000.0);
+
+        // Set exact counted cash = expected (Balanced)
+        $test->set('closingCashInput', $expected)
+            ->assertSet('closingCashInput', $expected)
+            ->assertSee('Balanced')
+            // Set short (Short by 1000)
+            ->set('closingCashInput', max(0, $expected - 1000))
+            ->assertSee('Cash Short')
+            ->assertSee('Reason for Shortage')
+            // Set over (Over by 1000)
+            ->set('closingCashInput', $expected + 1000)
+            ->assertSee('Cash Over');
+    }
+
+    /**
+     * Test Shift Report modal display and print touch targets.
+     */
+    public function test_shift_report_modal_and_print_touch_targets(): void
+    {
+        /** @var User $admin */
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->actingAs($admin);
+
+        \Livewire\Livewire::test(\App\Filament\Pages\OfflineSales::class)
+            ->call('openModal', 'shift_report')
+            ->assertSet('activeModal', 'shift_report')
+            ->assertSee('Print Thermal (80mm)')
+            ->assertSee('Standard A4 / PDF');
+    }
+
+    /**
+     * Test handleProductClick directly adds simple products and opens variant selection for multi-variant items.
+     */
+    public function test_handle_product_click_and_variant_selection_in_pos(): void
+    {
+        /** @var User $admin */
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->actingAs($admin);
+
+        // Ensure active POS station and session
+        $station = \App\Models\Hardware\PosStation::firstOrCreate(
+            ['id' => 1],
+            ['name' => 'Terminal 1', 'code' => 'pos_terminal_1', 'warehouse_id' => 43, 'is_active' => true]
+        );
+
+        $today = app(\App\Services\Pos\PosSessionService::class)->getNepalToday();
+        \App\Models\Pos\PosSession::updateOrCreate(
+            ['pos_station_id' => $station->id, 'business_date' => $today],
+            [
+                'warehouse_id' => 43,
+                'terminal_code' => $station->code,
+                'terminal_name' => $station->name,
+                'showroom_name' => 'Laijau Showroom',
+                'status' => 'open',
+                'opening_balance' => 2000.00,
+                'opened_by_user_id' => $admin->id,
+                'opened_by_name' => $admin->name,
+                'opened_at' => now(),
+                'expected_cash' => 2000.00,
+            ]
+        );
+
+        // Create simple product
+        $u1 = uniqid();
+        $simple = Product::create([
+            'name' => 'Simple Shawl ' . $u1,
+            'slug' => 'simple-shawl-' . $u1,
+            'sku' => 'SIMP-' . $u1,
+            'price' => 1200.00,
+            'quantity' => 15,
+            'is_active' => true,
+        ]);
+
+        // Create multi-variant product
+        $u2 = uniqid();
+        $multi = Product::create([
+            'name' => 'Multi Kurtha ' . $u2,
+            'slug' => 'multi-kurtha-' . $u2,
+            'sku' => 'MULT-' . $u2,
+            'price' => 2500.00,
+            'is_active' => true,
+        ]);
+        $var1 = ProductVariant::create([
+            'product_id' => $multi->id,
+            'sku' => 'MULT-RED-' . $u2,
+            'color' => 'Red',
+            'size' => 'M',
+            'price' => 2500.00,
+            'stock_quantity' => 10,
+            'is_active' => true,
+        ]);
+        $var2 = ProductVariant::create([
+            'product_id' => $multi->id,
+            'sku' => 'MULT-BLU-' . $u2,
+            'color' => 'Blue',
+            'size' => 'L',
+            'price' => 2500.00,
+            'stock_quantity' => 8,
+            'is_active' => true,
+        ]);
+
+        $test = \Livewire\Livewire::test(\App\Filament\Pages\OfflineSales::class);
+
+        // 1. Click simple product -> directly added to cart
+        $test->call('handleProductClick', $simple->id)
+            ->assertCount('cart', 1)
+            ->assertSet("cart.{$simple->id}-default.name", $simple->name)
+            ->assertSet("cart.{$simple->id}-default.quantity", 1);
+
+        // 2. Click multi-variant product -> opens variant modal
+        $test->call('handleProductClick', $multi->id)
+            ->assertSet('activeModal', 'variant_select')
+            ->assertSet('selectedProductForVariant.id', $multi->id)
+            ->call('selectModalVariantColor', 'Blue')
+            ->call('selectModalVariantSize', 'L')
+            ->call('addModalVariantToCart')
+            ->assertSet('activeModal', null)
+            ->assertCount('cart', 2);
+    }
 }
+
+

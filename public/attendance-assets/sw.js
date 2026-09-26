@@ -2,7 +2,7 @@
    LAIJAU EMPLOYEE ATTENDANCE PWA — SERVICE WORKER
    ========================================================================= */
 
-const CACHE_NAME = 'laijau-attendance-v1';
+const CACHE_NAME = 'laijau-attendance-v2';
 const OFFLINE_URL = '/attendance/offline';
 
 const PRECACHE_ASSETS = [
@@ -27,9 +27,7 @@ self.addEventListener('activate', (event) => {
         caches.keys().then((keys) => {
             return Promise.all(
                 keys.map((key) => {
-                    if (key !== CACHE_NAME) {
-                        return caches.delete(key);
-                    }
+                    return caches.delete(key);
                 })
             );
         }).then(() => self.clients.claim())

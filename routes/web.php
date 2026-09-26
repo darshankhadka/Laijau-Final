@@ -53,19 +53,14 @@ Route::prefix('attendance')->group(function () {
     Route::get('/sw.js', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'serviceWorker'])->name('attendance.sw');
     Route::get('/offline', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'offline'])->name('attendance.offline');
 
-    // Public / Unauthenticated PWA Views
-    Route::get('/setup', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'setup'])->name('attendance.setup');
     Route::get('/login', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'login'])->name('attendance.login');
-
-    // Secure Attendance Photo Viewer (Admin or Owning Employee)
     Route::get('/photos/{event}', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'viewPhoto'])->name('attendance.photo');
 
     // Public API endpoints (with rate limiting)
     Route::prefix('api')->group(function () {
+        Route::post('/verify', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'verifyCredentials'])->middleware('throttle:15,1')->name('attendance.api.verify');
         Route::post('/setup', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'setup'])->middleware('throttle:15,1')->name('attendance.api.setup');
         Route::post('/auth/pin', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'authenticatePin'])->middleware('throttle:10,1')->name('attendance.api.auth.pin');
-        Route::post('/webauthn/login-options', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'webauthnLoginOptions'])->name('attendance.api.webauthn.login_options');
-        Route::post('/webauthn/login-verify', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'webauthnLoginVerify'])->name('attendance.api.webauthn.login_verify');
     });
 
     // Authenticated Attendance Routes (Employee & Device Session Verified)
@@ -79,8 +74,6 @@ Route::prefix('attendance')->group(function () {
             Route::get('/status', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'status'])->name('attendance.api.status');
             Route::get('/history', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'history'])->name('attendance.api.history');
             Route::post('/auth/change-pin', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'changePin'])->name('attendance.api.auth.change_pin');
-            Route::post('/webauthn/register-options', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'webauthnRegisterOptions'])->name('attendance.api.webauthn.register_options');
-            Route::post('/webauthn/register-verify', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'webauthnRegisterVerify'])->name('attendance.api.webauthn.register_verify');
             Route::post('/log-gps-failure', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'logGpsFailure'])->name('attendance.api.log_gps_failure');
             Route::post('/logout', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'logout'])->name('attendance.api.logout');
         });
@@ -267,6 +260,14 @@ Route::get('/intadmin/offline-sales/{offlineSale}/receipt', function (\App\Model
     $offlineSale->load(['items', 'customer']);
     return view('offline-receipt', ['sale' => $offlineSale]);
 })->name('offline_sales.receipt')->middleware('web');
+
+// Clean named route aliases and fallbacks for Laijau POS
+Route::redirect('/intadmin/offline-sales/pos', '/intadmin/offline-sales/POS');
+Route::get('/intadmin/offline-sales', \App\Filament\Pages\OfflineSales::class)->middleware(['web', 'auth:admin'])->name('intadmin.offline-sales.legacy');
+
+
+
+
 
 Route::get('/intadmin/purchase-orders/{purchaseOrder}/print', function (\App\Models\Inventory\PurchaseOrder $purchaseOrder) {
     $user = auth('admin')->user() ?? auth('web')->user();

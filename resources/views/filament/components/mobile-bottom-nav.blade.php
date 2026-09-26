@@ -1,3 +1,8 @@
+@if(request()->is('intadmin/offline-sales/POS*') || request()->is('intadmin/offline-sales'))
+    {{-- Dedicated fullscreen POS owns the entire viewport --}}
+    @php return; @endphp
+@endif
+
 @php
     $currentRoute = request()->route()?->getName() ?? '';
     $currentUri = request()->getRequestUri();
@@ -8,9 +13,7 @@
     $isFulfillment = str_contains($currentRoute, 'fulfillment-hub') || str_contains($currentUri, '/intadmin/fulfillment-hub');
     $isDashboard = str_contains($currentRoute, 'dashboard') || $currentUri === '/intadmin' || $currentUri === '/intadmin/';
     
-    $posUrl = \Illuminate\Support\Facades\Route::has('filament.admin.pages.offline-sales') 
-        ? route('filament.admin.pages.offline-sales') 
-        : (\Illuminate\Support\Facades\Route::has('filament.admin.pages.point-of-sale') ? route('filament.admin.pages.point-of-sale') : '/intadmin/offline-sales');
+    $posUrl = url('/intadmin/offline-sales/POS');
         
     $ordersUrl = \Illuminate\Support\Facades\Route::has('filament.admin.resources.orders.index') 
         ? route('filament.admin.resources.orders.index') 
@@ -76,6 +79,8 @@
         <!-- 1. POS Terminal -->
         <a 
             href="{{ $posUrl }}" 
+            target="_blank"
+            rel="noopener noreferrer"
             class="lj-mobile-nav-item {{ $isPos ? 'active' : '' }}"
             title="Point of Sale"
         >

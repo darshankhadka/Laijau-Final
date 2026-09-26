@@ -130,6 +130,36 @@ class LaijauPosSystemTest extends TestCase
                 'quantity_reserved' => 0,
             ]
         );
+
+        $station = \App\Models\Hardware\PosStation::firstOrCreate(
+            ['id' => 1],
+            [
+                'name' => 'Terminal 1',
+                'code' => 'pos_terminal_1',
+                'warehouse_id' => $this->showroomWarehouse->id,
+                'is_active' => true,
+            ]
+        );
+
+        $today = app(\App\Services\Pos\PosSessionService::class)->getNepalToday();
+        \App\Models\Pos\PosSession::updateOrCreate(
+            [
+                'pos_station_id' => $station->id,
+                'business_date' => $today,
+            ],
+            [
+                'warehouse_id' => $this->showroomWarehouse->id,
+                'terminal_code' => $station->code,
+                'terminal_name' => $station->name,
+                'showroom_name' => 'Laijau Showroom',
+                'status' => 'open',
+                'opening_balance' => 2000.00,
+                'opened_by_user_id' => $this->admin->id,
+                'opened_by_name' => $this->admin->name,
+                'opened_at' => now(),
+                'expected_cash' => 2000.00,
+            ]
+        );
     }
 
     /**

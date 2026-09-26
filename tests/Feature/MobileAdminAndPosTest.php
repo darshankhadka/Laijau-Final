@@ -75,6 +75,11 @@ class MobileAdminAndPosTest extends TestCase
     {
         $admin = $this->getAdminUser();
 
+        $station = \App\Models\Hardware\PosStation::first() ?? \App\Models\Hardware\PosStation::create(['name' => 'POS Terminal 1', 'station_code' => 'POS-T1', 'is_active' => true]);
+        try {
+            app(\App\Services\Pos\PosSessionService::class)->openSession($station->id, 1000.0, $admin);
+        } catch (\Throwable $e) {}
+
         $product = Product::create([
             'name' => 'Mobile Test Denim Jacket ' . uniqid(),
             'slug' => 'mobile-test-denim-jacket-' . uniqid(),
@@ -106,6 +111,11 @@ class MobileAdminAndPosTest extends TestCase
     public function test_pos_checkout_modal_contains_mobile_bottom_sheet_classes(): void
     {
         $admin = $this->getAdminUser();
+
+        $station = \App\Models\Hardware\PosStation::first() ?? \App\Models\Hardware\PosStation::create(['name' => 'POS Terminal 1', 'station_code' => 'POS-T1', 'is_active' => true]);
+        try {
+            app(\App\Services\Pos\PosSessionService::class)->openSession($station->id, 1000.0, $admin);
+        } catch (\Throwable $e) {}
 
         $product = Product::create([
             'name' => 'Cotton Hoodie Set ' . uniqid(),
@@ -194,7 +204,12 @@ class MobileAdminAndPosTest extends TestCase
 
     public function test_pos_mobile_header_supports_full_tab_navigation_and_usb_scanner_buffer(): void
     {
-        $posBlade = file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php'));
+        $posBlade = file_exists(resource_path('views/filament/pages/offline-sales/styles.blade.php'))
+            ? file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php')) .
+              file_get_contents(resource_path('views/filament/pages/offline-sales/header.blade.php')) .
+              file_get_contents(resource_path('views/filament/pages/offline-sales/scripts.blade.php')) .
+              file_get_contents(resource_path('views/filament/pages/offline-sales/styles.blade.php'))
+            : file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php'));
 
         // Mobile topbar uses order 3 for tab navigation and nowrap topbar
         $this->assertStringContainsString('order: 3 !important', $posBlade);
@@ -208,7 +223,11 @@ class MobileAdminAndPosTest extends TestCase
 
     public function test_pos_and_offline_receipt_include_80mm_thermal_printing_styles_and_autoprint(): void
     {
-        $posBlade = file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php'));
+        $posBlade = file_exists(resource_path('views/filament/pages/offline-sales/styles.blade.php'))
+            ? file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php')) .
+              file_get_contents(resource_path('views/filament/pages/offline-sales/scripts.blade.php')) .
+              file_get_contents(resource_path('views/filament/pages/offline-sales/styles.blade.php'))
+            : file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php'));
         $receiptBlade = file_get_contents(resource_path('views/offline-receipt.blade.php'));
 
         // Check 80mm thermal paper configuration
@@ -234,7 +253,9 @@ class MobileAdminAndPosTest extends TestCase
         $this->assertStringContainsString($disclaimer, $posReceipt);
 
         // 3. POS terminal modal
-        $posPage = file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php'));
+        $posPage = file_exists(resource_path('views/filament/pages/offline-sales/print/thermal.blade.php'))
+            ? file_get_contents(resource_path('views/filament/pages/offline-sales/print/thermal.blade.php'))
+            : file_get_contents(resource_path('views/filament/pages/offline-sales.blade.php'));
         $this->assertStringContainsString($disclaimer, $posPage);
 
         // 4. Warehouse packing slip
