@@ -17,6 +17,7 @@ class AttendanceEvent extends Model
 
     protected $fillable = [
         'employee_id',
+        'session_id',
         'device_id',
         'attendance_location_id',
         'type',
@@ -77,6 +78,11 @@ class AttendanceEvent extends Model
     public function locationUpdates(): HasMany
     {
         return $this->hasMany(AttendanceLocationUpdate::class, 'attendance_event_id');
+    }
+
+    public function session(): BelongsTo
+    {
+        return $this->belongsTo(AttendanceSession::class, 'session_id');
     }
 
     /**

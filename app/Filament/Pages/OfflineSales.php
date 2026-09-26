@@ -814,17 +814,35 @@ class OfflineSales extends Page
 
     public function getCustomersListProperty(): array
     {
-        $q = User::where('role', 'customer');
         $s = trim($this->customerSearchQuery);
+        $q = User::query();
+
         if ($s !== '') {
-            $q->where(function ($sub) use ($s) {
+            $cleanDigits = preg_replace('/\D/', '', $s);
+            $q->where(function ($sub) use ($s, $cleanDigits) {
                 $sub->where('name', 'like', "%{$s}%")
                     ->orWhere('email', 'like', "%{$s}%")
                     ->orWhere('phone', 'like', "%{$s}%");
+
+                if (strlen($cleanDigits) >= 4) {
+                    $sub->orWhere('phone', 'like', "%{$cleanDigits}%");
+                    if (str_starts_with($cleanDigits, '977') && strlen($cleanDigits) >= 12) {
+                        $sub->orWhere('phone', 'like', '%' . substr($cleanDigits, 3) . '%');
+                    }
+                }
             });
             return $q->orderBy('name')->limit(50)->get(['id', 'name', 'email', 'phone'])->toArray();
         }
-        return $q->orderBy('name')->limit(30)->get(['id', 'name', 'email', 'phone'])->toArray();
+
+        return $q->where(function ($sub) {
+                $sub->where('role', 'customer')
+                    ->orWhereNull('role')
+                    ->orWhere('role', '');
+            })
+            ->orderBy('name')
+            ->limit(30)
+            ->get(['id', 'name', 'email', 'phone'])
+            ->toArray();
     }
 
     public function getSalesHistoryProperty(): array
@@ -1047,6 +1065,11 @@ class OfflineSales extends Page
             }
         }
         $this->activeModal = $modal;
+    }
+
+    public function openCustomerModal(): void
+    {
+        $this->activeModal = 'customer_modal';
     }
 
     public function closeModal(): void
@@ -1697,17 +1720,32 @@ class OfflineSales extends Page
         $this->closeModal();
     }
 
-    public function selectCustomer(int $userId): void
+    public function selectCustomer(int|string $userId): void
     {
-        $user = User::find($userId);
+        $user = User::find((int) $userId);
         if ($user) {
             $this->customerType = 'existing';
             $this->selectedUserId = $user->id;
-            $this->customerName = $user->name;
+            $this->customerName = !empty(trim((string)$user->name)) ? $user->name : ($user->phone ?: "Customer #{$user->id}");
             $this->customerEmail = $user->email ?? '';
             $this->customerPhone = \App\Services\Customer\CustomerService::normalizePhone($user->phone) ?? ($user->phone ?? '');
+            $this->customerSearchQuery = '';
+
+            Notification::make()
+                ->title('Customer Attached')
+                ->body("{$this->customerName} attached to sale.")
+                ->success()
+                ->send();
         }
         $this->closeModal();
+    }
+
+    public function selectFirstMatchingCustomer(): void
+    {
+        $list = $this->customersList;
+        if (!empty($list) && isset($list[0]['id'])) {
+            $this->selectCustomer($list[0]['id']);
+        }
     }
 
     public function createAndAttachCustomer(): void

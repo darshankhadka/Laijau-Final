@@ -3,13 +3,12 @@
 namespace App\Http\Controllers\Attendance;
 
 use App\Http\Controllers\Controller;
-use App\Models\Attendance\AttendanceDevice;
-use App\Models\Attendance\AttendanceEvent;
+use App\Models\Attendance\AttendanceAuthToken;
 use App\Models\Attendance\AttendanceLocation;
 use App\Models\Attendance\AttendanceSetting;
+use App\Models\Hrm\Employee;
 use App\Services\Attendance\AttendanceService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
 class AttendancePwaController extends Controller
@@ -23,8 +22,8 @@ class AttendancePwaController extends Controller
      */
     public function dashboard(Request $request)
     {
+        /** @var Employee $employee */
         $employee = $request->attributes->get('attendance_employee');
-        $device = $request->attributes->get('attendance_device');
 
         $status = $this->attendanceService->getEmployeeAttendanceState($employee);
         $recentHistory = $this->attendanceService->getEmployeeRecentHistory($employee, 7);
@@ -34,37 +33,43 @@ class AttendancePwaController extends Controller
 
         $settings = [
             'gps_required' => AttendanceSetting::get('gps_required', true),
-            'photo_required' => AttendanceSetting::get('photo_required', true),
             'geofencing_enabled' => AttendanceSetting::get('geofencing_enabled', true),
-            'max_gps_accuracy_meters' => AttendanceSetting::get('max_gps_accuracy_meters', 100),
-            'heartbeat_interval_seconds' => AttendanceSetting::get('heartbeat_interval_seconds', 180),
+            'max_gps_accuracy_meters' => (int) AttendanceSetting::get('max_gps_accuracy_meters', 100),
+            'heartbeat_interval_seconds' => (int) AttendanceSetting::get('heartbeat_interval_seconds', 180),
         ];
 
-        return view('attendance.dashboard', compact('employee', 'device', 'status', 'recentHistory', 'defaultLocation', 'settings'));
+        $canPunchFromAnywhere = $employee->canPunchFromAnywhere();
+
+        return view('attendance.dashboard', compact('employee', 'status', 'recentHistory', 'defaultLocation', 'settings', 'canPunchFromAnywhere'));
     }
 
-
     /**
-     * Subsequent Login / Unlock Screen for Registered Devices.
+     * Standalone Fullscreen PIN Entry Screen.
      */
     public function login(Request $request)
     {
-        if (session('attendance_employee_id') && session('attendance_device_id')) {
-            return redirect()->route('attendance.dashboard');
+        // If already authenticated via session, redirect directly to dashboard
+        if (session('attendance_employee_id')) {
+            $employee = Employee::find(session('attendance_employee_id'));
+            if ($employee && $employee->attendance_access_enabled && $employee->status === 'active') {
+                return redirect()->route('attendance.dashboard');
+            }
         }
 
-        $deviceToken = $request->cookie('laijau_attendance_device')
-            ?? $request->header('X-Device-Token');
-
-        $device = null;
-        if ($deviceToken) {
-            $device = AttendanceDevice::with('employee')
-                ->where('device_token_hash', hash('sha256', $deviceToken))
-                ->where('is_active', true)
-                ->first();
+        // If authenticated via persistent token cookie, redirect to dashboard
+        $token = $request->cookie('laijau_attendance_session');
+        if ($token) {
+            $employee = AttendanceAuthToken::validateToken($token);
+            if ($employee) {
+                session([
+                    'attendance_employee_id' => $employee->id,
+                    'attendance_auth_time' => now()->timestamp,
+                ]);
+                return redirect()->route('attendance.dashboard');
+            }
         }
 
-        return view('attendance.login', compact('device'));
+        return view('attendance.login');
     }
 
     /**
@@ -109,7 +114,8 @@ class AttendancePwaController extends Controller
      */
     public function serviceWorker()
     {
-        $sw = file_get_contents(public_path('attendance-assets/sw.js'));
+        $swPath = public_path('attendance-assets/sw.js');
+        $sw = file_exists($swPath) ? file_get_contents($swPath) : '// Service worker';
 
         return response($sw, 200, [
             'Content-Type' => 'application/javascript; charset=utf-8',
@@ -124,31 +130,5 @@ class AttendancePwaController extends Controller
     public function offline()
     {
         return view('attendance.offline');
-    }
-
-    /**
-     * Secure Photo Viewer: only authorized admins or the owning employee may access.
-     */
-    public function viewPhoto(Request $request, AttendanceEvent $event)
-    {
-        $isAdmin = auth('admin')->check() || auth('web')->check();
-        $isOwner = session('attendance_employee_id') == $event->employee_id;
-
-        if (!$isAdmin && !$isOwner) {
-            abort(403, 'Unauthorized access to employee attendance photo.');
-        }
-
-        if (empty($event->photo_path) || !Storage::disk('local')->exists($event->photo_path)) {
-            abort(404, 'Attendance photo file not found.');
-        }
-
-        $fileContent = Storage::disk('local')->get($event->photo_path);
-        $mime = 'image/jpeg';
-
-        return response($fileContent, 200, [
-            'Content-Type' => $mime,
-            'Content-Disposition' => 'inline; filename="attendance_' . $event->id . '.jpg"',
-            'Cache-Control' => 'private, no-cache, no-store, must-revalidate',
-        ]);
     }
 }

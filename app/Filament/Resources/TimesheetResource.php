@@ -153,23 +153,40 @@ class TimesheetResource extends Resource
                     ->date('M d, Y')
                     ->sortable(),
 
-                TextColumn::make('shift_name')
-                    ->label('Shift')
-                    ->limit(18)
-                    ->color('gray'),
+                TextColumn::make('total_sessions')
+                    ->label('Sessions')
+                    ->badge()
+                    ->color('info')
+                    ->formatStateUsing(function ($state, $record) {
+                        $count = $state ?: ($record->attendanceSessions()->count() ?: 1);
+                        return $count . ' ' . \Illuminate\Support\Str::plural('sess', $count);
+                    })
+                    ->sortable(),
 
                 TextColumn::make('clock_in')
-                    ->label('Clock In')
+                    ->label('First In')
                     ->time('h:i A'),
 
                 TextColumn::make('clock_out')
-                    ->label('Clock Out')
-                    ->time('h:i A'),
+                    ->label('Last Out')
+                    ->time('h:i A')
+                    ->placeholder('Active'),
+
+                TextColumn::make('total_worked_hours')
+                    ->label('Worked')
+                    ->formatStateUsing(function ($state, $record) {
+                        $hrs = (float)($state ?: $record->regular_hours);
+                        $mins = (int)($record->total_worked_minutes ?: ($hrs * 60));
+                        $h = floor($mins / 60);
+                        $m = $mins % 60;
+                        return "{$h}h {$m}m";
+                    })
+                    ->sortable(),
 
                 TextColumn::make('regular_hours')
                     ->label('Regular (Hrs)')
                     ->numeric(2)
-                    ->sortable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('overtime_hours')
                     ->label('OT (Hrs)')
@@ -208,7 +225,32 @@ class TimesheetResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('employee_id')
                     ->label('Employee')
-                    ->relationship('employee', 'first_name'),
+                    ->searchable()
+                    ->options(fn() => Employee::orderBy('first_name')->get()->mapWithKeys(function ($emp) {
+                        $name = trim($emp->first_name . ' ' . $emp->last_name);
+                        return [$emp->id => $emp->employee_number ? "{$name} ({$emp->employee_number})" : $name];
+                    })->all()),
+
+                Tables\Filters\Filter::make('date_range')
+                    ->form([
+                        DatePicker::make('from_date')->label('From Date'),
+                        DatePicker::make('until_date')->label('Until Date'),
+                    ])
+                    ->query(function ($query, array $data) {
+                        return $query
+                            ->when($data['from_date'] ?? null, fn($q, $date) => $q->whereDate('date', '>=', $date))
+                            ->when($data['until_date'] ?? null, fn($q, $date) => $q->whereDate('date', '<=', $date));
+                    })
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+                        if ($data['from_date'] ?? null) {
+                            $indicators['from_date'] = 'From: ' . \Carbon\Carbon::parse($data['from_date'])->format('M d, Y');
+                        }
+                        if ($data['until_date'] ?? null) {
+                            $indicators['until_date'] = 'Until: ' . \Carbon\Carbon::parse($data['until_date'])->format('M d, Y');
+                        }
+                        return $indicators;
+                    }),
 
                 Tables\Filters\SelectFilter::make('attendance_status')
                     ->options([
@@ -227,6 +269,34 @@ class TimesheetResource extends Resource
                     ]),
             ])
             ->actions([
+                \Filament\Actions\Action::make('view_sessions')
+                    ->label('Sessions')
+                    ->icon('heroicon-o-queue-list')
+                    ->color('info')
+                    ->modalHeading(fn(Timesheet $record) => "Attendance Sessions — " . ($record->employee?->full_name ?? 'Employee') . " (" . ($record->date?->format('M d, Y') ?? '') . ")")
+                    ->modalWidth('4xl')
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->modalContent(fn(Timesheet $record) => view('filament.components.timesheet-sessions-modal', [
+                        'record' => $record,
+                    ])),
+
+                \Filament\Actions\Action::make('employee_summary')
+                    ->label('Summary')
+                    ->icon('heroicon-o-chart-bar')
+                    ->color('gray')
+                    ->modalHeading(fn(Timesheet $record) => "Monthly Attendance Summary — " . ($record->employee?->full_name ?? 'Employee'))
+                    ->modalWidth('4xl')
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->modalContent(function (Timesheet $record) {
+                        $attendanceService = app(\App\Services\Attendance\AttendanceService::class);
+                        $summary = $attendanceService->getEmployeeTimesheetSummary($record->employee, 'monthly');
+                        return view('filament.components.timesheet-employee-summary-modal', [
+                            'summary' => $summary,
+                        ]);
+                    }),
+
                 \Filament\Actions\Action::make('approve')
                     ->label('Approve')
                     ->icon('heroicon-o-check')

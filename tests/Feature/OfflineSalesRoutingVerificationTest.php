@@ -43,12 +43,12 @@ class OfflineSalesRoutingVerificationTest extends TestCase
         $response->assertDontSee('fi-sidebar', false);
         $response->assertDontSee('fi-topbar', false);
 
-        // Verify internal POS header & compact navigation are present
+        // Verify internal POS header is present while internal navigation links are removed to keep POS focused on selling
         $response->assertSee('lj-pos-topbar', false);
-        $response->assertSee('/intadmin/offline-sales/POS', false);
-        $response->assertSee('/intadmin/offline-sales/history', false);
-        $response->assertSee('/intadmin/offline-sales/dashboard', false);
-        $response->assertSee('/intadmin/offline-sales/metrics', false);
+        $response->assertDontSee('<nav class="lj-tab-nav"', false);
+        $response->assertDontSee('/intadmin/offline-sales/history', false);
+        $response->assertDontSee('/intadmin/offline-sales/dashboard', false);
+        $response->assertDontSee('/intadmin/offline-sales/metrics', false);
     }
 
     public function test_history_dashboard_metrics_retain_filament_admin_shell(): void

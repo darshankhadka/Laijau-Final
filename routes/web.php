@@ -37,6 +37,19 @@ Route::post('/payment/connectips/callback', [\App\Http\Controllers\Storefront\Co
 // Secure Payment Proof Viewer
 Route::get('/orders/{order}/payment-proof', [\App\Http\Controllers\Storefront\PaymentProofController::class, 'show'])->name('orders.payment_proof');
 Route::get('/intadmin/orders/{order}/payment-proof', [\App\Http\Controllers\Storefront\PaymentProofController::class, 'show'])->name('admin.orders.payment_proof');
+Route::middleware(['web', 'auth'])->get('/intadmin/attendance/employee-summary-data', function (\Illuminate\Http\Request $request) {
+    $employeeId = $request->query('employee_id');
+    $employee = \App\Models\Hrm\Employee::find($employeeId);
+    if (!$employee) {
+        return response()->json(['error' => 'Employee not found.'], 404);
+    }
+    $period = $request->query('period', 'monthly');
+    $start = $request->query('start_date') ? \Carbon\Carbon::parse($request->query('start_date')) : null;
+    $end = $request->query('end_date') ? \Carbon\Carbon::parse($request->query('end_date')) : null;
+
+    $summary = app(\App\Services\Attendance\AttendanceService::class)->getEmployeeTimesheetSummary($employee, $period, $start, $end);
+    return response()->json($summary);
+})->name('admin.attendance.employee_summary_data');
 
 // People & HRM Mobile-First Employee Portal
 Route::get('/hrm/portal', [\App\Http\Controllers\Hrm\EmployeePortalController::class, 'index'])->name('hrm.portal');
@@ -54,13 +67,10 @@ Route::prefix('attendance')->group(function () {
     Route::get('/offline', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'offline'])->name('attendance.offline');
 
     Route::get('/login', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'login'])->name('attendance.login');
-    Route::get('/photos/{event}', [\App\Http\Controllers\Attendance\AttendancePwaController::class, 'viewPhoto'])->name('attendance.photo');
 
-    // Public API endpoints (with rate limiting)
+    // Public Attendance API endpoint (Rate limited)
     Route::prefix('api')->group(function () {
-        Route::post('/verify', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'verifyCredentials'])->middleware('throttle:15,1')->name('attendance.api.verify');
-        Route::post('/setup', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'setup'])->middleware('throttle:15,1')->name('attendance.api.setup');
-        Route::post('/auth/pin', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'authenticatePin'])->middleware('throttle:10,1')->name('attendance.api.auth.pin');
+        Route::post('/auth/pin', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'authenticatePin'])->middleware('throttle:20,1')->name('attendance.api.auth.pin');
     });
 
     // Authenticated Attendance Routes (Employee & Device Session Verified)
@@ -73,6 +83,7 @@ Route::prefix('attendance')->group(function () {
             Route::post('/heartbeat', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'heartbeat'])->name('attendance.api.heartbeat');
             Route::get('/status', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'status'])->name('attendance.api.status');
             Route::get('/history', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'history'])->name('attendance.api.history');
+            Route::get('/summary', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'summary'])->name('attendance.api.summary');
             Route::post('/auth/change-pin', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'changePin'])->name('attendance.api.auth.change_pin');
             Route::post('/log-gps-failure', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'logGpsFailure'])->name('attendance.api.log_gps_failure');
             Route::post('/logout', [\App\Http\Controllers\Attendance\AttendanceApiController::class, 'logout'])->name('attendance.api.logout');

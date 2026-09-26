@@ -113,9 +113,21 @@ class PosDashboard extends Page
         } else {
             $targetStationId = $this->dashboardStationId ?? $this->selectedStationId;
             $state = app(\App\Services\Pos\PosSessionService::class)->getTerminalSessionState($targetStationId);
-            $this->closingSessionId = $state['session']?->id;
+            $this->closingSessionId = $state['session']?->id
+                ?? \App\Models\Pos\PosSession::where('pos_station_id', $targetStationId)->latest('id')->value('id')
+                ?? \App\Models\Pos\PosSession::latest('id')->value('id');
         }
         $this->activeModal = 'shift_report';
+    }
+
+    public function openModal(string $modal): void
+    {
+        if ($modal === 'shift_report') {
+            $this->openShiftReportModal();
+            return;
+        }
+
+        $this->activeModal = $modal;
     }
 
     public function closeModal(): void

@@ -274,7 +274,7 @@
         .dark #att-leaflet-map { border-color: #1f2937; }
     </style>
 
-    <!-- Leaflet Assets (Free, Open-Source, shared-hosting friendly) -->
+    <!-- Leaflet Assets (Free, Open-Source) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
@@ -291,14 +291,14 @@
                             <span style="width:6px;height:6px;border-radius:9999px;background:#34d399;"></span>
                             Live System Active
                         </span>
-                        <span class="att-adm-pill">PWA / WebAuthn Enabled</span>
+                        <span class="att-adm-pill">PIN-Locked PWA</span>
                         <span style="font-size:0.6875rem;color:#cbd5e1;">Showroom & Warehouse Operations</span>
                     </div>
                     <h1 style="font-size:1.5rem;font-weight:900;letter-spacing:-0.02em;margin:0;">
                         Employee Attendance Control Center
                     </h1>
                     <p style="font-size:0.8125rem;color:#cbd5e1;margin-top:0.25rem;">
-                        Monitor real-time showroom check-ins, verify front-camera photos, track live GPS locations, and manage employee PIN credentials.
+                        Monitor real-time showroom clock-ins, track live GPS locations, and generate unique employee PIN credentials.
                     </p>
                 </div>
 
@@ -366,7 +366,7 @@
                 type="button"
                 wire:click="setTab('employees')"
                 class="att-adm-tab-btn {{ $activeTab === 'employees' ? 'active' : '' }}">
-                <span>👥 Employees & Devices</span>
+                <span>👥 Employees & PIN Management</span>
                 <span class="att-adm-badge gray">{{ $employees->count() }}</span>
             </button>
 
@@ -402,7 +402,7 @@
                 <div class="att-adm-card-head">
                     <div>
                         <h3 style="font-size:1rem;font-weight:800;color:#0f172a;margin:0;">Today's Attendance Events</h3>
-                        <p style="font-size:0.75rem;color:#64748b;margin:0;">Authoritative server timestamps, photo evidence, and geofence verification results</p>
+                        <p style="font-size:0.75rem;color:#64748b;margin:0;">Authoritative server timestamps and GPS geofence verification results</p>
                     </div>
                 </div>
 
@@ -410,14 +410,12 @@
                     <table class="att-adm-table">
                         <thead>
                             <tr>
-                                <th>Photo</th>
                                 <th>Employee</th>
                                 <th>Type</th>
                                 <th>Server Timestamp</th>
                                 <th>Location & Distance</th>
                                 <th>GPS Accuracy</th>
                                 <th>Geofence</th>
-                                <th>Device</th>
                                 <th>Method</th>
                             </tr>
                         </thead>
@@ -425,38 +423,26 @@
                             @forelse($todayEvents as $ev)
                                 <tr>
                                     <td>
-                                        @if($ev->photo_path)
-                                            <a href="{{ route('attendance.photo', ['event' => $ev->id]) }}" target="_blank" title="View Full Photo">
-                                                <img src="{{ route('attendance.photo', ['event' => $ev->id]) }}" style="width:38px;height:38px;border-radius:0.5rem;object-fit:cover;border:1px solid #cbd5e1;" alt="Photo">
-                                            </a>
-                                        @else
-                                            <span style="font-size:0.6875rem;color:#94a3b8;">No photo</span>
-                                        @endif
-                                    </td>
-                                    <td>
                                         <div style="font-weight:800;color:#0f172a;">{{ $ev->employee?->full_name }}</div>
                                         <div style="font-size:0.65rem;color:#64748b;font-family:monospace;">{{ $ev->employee?->employee_number }}</div>
                                     </td>
                                     <td>
                                         @if($ev->type === 'check_in')
-                                            <span class="att-adm-badge emerald">Check In</span>
+                                            <span class="att-adm-badge emerald">Clock In</span>
                                         @else
-                                            <span class="att-adm-badge rose">Check Out</span>
+                                            <span class="att-adm-badge rose">Clock Out</span>
                                         @endif
                                     </td>
                                     <td>
                                         <div style="font-weight:700;color:#0f172a;font-family:monospace;">
                                             {{ $ev->server_recorded_at->format('h:i:s A') }}
                                         </div>
-                                        <div style="font-size:0.65rem;color:#64748b;">
-                                            {{ $ev->server_recorded_at->diffForHumans() }}
-                                        </div>
                                     </td>
                                     <td>
-                                        <div>{{ $ev->location?->name ?? 'Showroom' }}</div>
+                                        <div>{{ $ev->location?->name ?? 'Laijau Showroom' }}</div>
                                         @if($ev->distance_from_location_meters !== null)
-                                            <div style="font-size:0.65rem;color:#64748b;">
-                                                {{ round($ev->distance_from_location_meters) }}m from center
+                                            <div style="font-size:0.65rem;color:#64748b;font-family:monospace;">
+                                                Distance: {{ round($ev->distance_from_location_meters) }}m
                                             </div>
                                         @endif
                                     </td>
@@ -469,22 +455,19 @@
                                     </td>
                                     <td>
                                         @if($ev->geofence_passed)
-                                            <span class="att-adm-badge emerald">✓ Passed</span>
+                                            <span class="att-adm-badge emerald">Inside Geofence</span>
                                         @else
-                                            <span class="att-adm-badge rose">✕ Failed</span>
+                                            <span class="att-adm-badge rose">Outside</span>
                                         @endif
                                     </td>
-                                    <td style="font-size:0.6875rem;color:#475569;">
-                                        {{ $ev->device?->device_name ?? ($ev->device?->platform ?: 'Mobile') }}
-                                    </td>
                                     <td>
-                                        <span class="att-adm-badge gray">{{ ucfirst($ev->verification_method) }}</span>
+                                        <span class="att-adm-badge blue">{{ strtoupper($ev->verification_method ?? 'PIN') }}</span>
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="9" style="padding:2.5rem;text-align:center;color:#64748b;">
-                                        No attendance events recorded today yet.
+                                    <td colspan="7" style="padding:2.5rem;text-align:center;color:#64748b;">
+                                        No attendance punches recorded yet today.
                                     </td>
                                 </tr>
                             @endforelse
@@ -495,62 +478,14 @@
         @endif
 
         <!-- ================================================================= -->
-        <!-- TAB 2: LIVE GPS MAP (LEAFLET.JS) -->
+        <!-- TAB 2: LIVE SHOWROOM GPS MAP -->
         <!-- ================================================================= -->
         @if($activeTab === 'map')
-            <div class="att-adm-card" x-data="{
-                initMap() {
-                    const employees = {{ json_encode($mapEmployees) }};
-                    const centerLat = {{ $defaultLoc ? $defaultLoc->latitude : 27.6976748 }};
-                    const centerLon = {{ $defaultLoc ? $defaultLoc->longitude : 85.3664331 }};
-                    const radius = {{ $defaultLoc ? $defaultLoc->radius_meters : 100 }};
-
-                    const map = L.map('att-leaflet-map').setView([centerLat, centerLon], 16);
-
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        maxZoom: 19,
-                        attribution: '&copy; OpenStreetMap contributors'
-                    }).addTo(map);
-
-                    // Draw workplace geofence circle
-                    L.circle([centerLat, centerLon], {
-                        color: '#059669',
-                        fillColor: '#10b981',
-                        fillOpacity: 0.15,
-                        radius: radius
-                    }).addTo(map).bindPopup('<strong>Laijau Showroom</strong><br>Permitted Geofence: ' + radius + 'm');
-
-                    // Add employee markers
-                    employees.forEach(emp => {
-                        const markerColor = emp.is_stale ? '#f59e0b' : '#10b981';
-                        const staleText = emp.is_stale ? '<span style=\"color:#b45309;font-weight:700;\">[Stale &gt;15m]</span>' : '<span style=\"color:#047857;font-weight:700;\">[Active GPS]</span>';
-
-                        const marker = L.circleMarker([emp.latitude, emp.longitude], {
-                            radius: 9,
-                            fillColor: markerColor,
-                            color: '#ffffff',
-                            weight: 2,
-                            opacity: 1,
-                            fillOpacity: 0.9
-                        }).addTo(map);
-
-                        const popupHtml = `
-                            <div style=\"font-size:12px;min-width:160px;\">
-                                <strong style=\"font-size:14px;color:#001b48;\">${emp.name}</strong> (${emp.code})<br>
-                                <span>Checked In: <strong>${emp.check_in_time}</strong></span><br>
-                                <span>Last Updated: <strong>${emp.last_updated_human}</strong></span> ${staleText}<br>
-                                <span>Accuracy: <strong>±${emp.accuracy || '?'}m</strong></span>
-                            </div>
-                        `;
-                        marker.bindPopup(popupHtml);
-                    });
-                }
-            }" x-init="initMap()">
-
+            <div class="att-adm-card">
                 <div class="att-adm-card-head">
                     <div>
                         <h3 style="font-size:1rem;font-weight:800;color:#0f172a;margin:0;">Live Showroom Workforce Map</h3>
-                        <p style="font-size:0.75rem;color:#64748b;margin:0;">Locations of currently checked-in employees. Stale markers indicate browser inactive for &gt;15 minutes.</p>
+                        <p style="font-size:0.75rem;color:#64748b;margin:0;">Locations of currently clocked-in employees. Stale markers indicate device inactive for &gt;15 minutes.</p>
                     </div>
 
                     <div style="display:flex;align-items:center;gap:0.75rem;font-size:0.6875rem;">
@@ -574,14 +509,14 @@
         @endif
 
         <!-- ================================================================= -->
-        <!-- TAB 3: EMPLOYEES & DEVICE CREDENTIALS -->
+        <!-- TAB 3: EMPLOYEES & PIN MANAGEMENT -->
         <!-- ================================================================= -->
         @if($activeTab === 'employees')
             <div class="att-adm-card">
                 <div class="att-adm-card-head">
                     <div>
-                        <h3 style="font-size:1rem;font-weight:800;color:#0f172a;margin:0;">Employee Attendance Credentials & Devices</h3>
-                        <p style="font-size:0.75rem;color:#64748b;margin:0;">Manage administrator PINs, view active paired mobile devices, or revoke access</p>
+                        <h3 style="font-size:1rem;font-weight:800;color:#0f172a;margin:0;">Employee Attendance PINs</h3>
+                        <p style="font-size:0.75rem;color:#64748b;margin:0;">Generate or reset unique attendance PINs for staff members. PINs are securely hashed at rest.</p>
                     </div>
                 </div>
 
@@ -591,10 +526,9 @@
                             <tr>
                                 <th>Employee</th>
                                 <th>Phone</th>
-                                <th>Department</th>
+                                <th>Department &amp; Position</th>
                                 <th>Attendance PIN</th>
-                                <th>Status</th>
-                                <th>Registered Devices</th>
+                                <th>Access Status</th>
                                 <th style="text-align:right;">Actions</th>
                             </tr>
                         </thead>
@@ -604,55 +538,64 @@
                                     <td>
                                         <div style="font-weight:800;color:#0f172a;">{{ $emp['name'] }}</div>
                                         <div style="font-size:0.65rem;color:#64748b;font-family:monospace;">{{ $emp['code'] }}</div>
+                                        @if($emp['can_punch_from_anywhere'])
+                                            <span class="att-adm-badge blue" style="font-size:0.6rem;margin-top:0.25rem;">📍 Punch From Anywhere Authorized</span>
+                                        @endif
                                     </td>
                                     <td style="font-family:monospace;">{{ $emp['phone'] }}</td>
-                                    <td>{{ $emp['department'] }}</td>
+                                    <td>
+                                        <div>{{ $emp['department'] }}</div>
+                                        <div style="font-size:0.65rem;color:#64748b;">{{ $emp['position'] }}</div>
+                                    </td>
                                     <td>
                                         @if($emp['has_pin'])
-                                            <span class="att-adm-badge emerald">PIN Configured</span>
-                                            <div style="font-size:0.65rem;color:#94a3b8;">Set: {{ $emp['pin_set_at'] }}</div>
+                                            <span class="att-adm-badge emerald">PIN Active</span>
+                                            <div style="font-size:0.65rem;color:#94a3b8;">Configured: {{ $emp['pin_set_at'] }}</div>
                                         @else
-                                            <span class="att-adm-badge amber">No PIN Set</span>
+                                            <span class="att-adm-badge amber">No PIN Assigned</span>
                                         @endif
                                     </td>
                                     <td>
                                         @if(!$emp['access_enabled'])
                                             <span class="att-adm-badge rose">Access Disabled</span>
                                         @elseif($emp['is_locked'])
-                                            <span class="att-adm-badge amber">Temporarily Locked</span>
+                                            <span class="att-adm-badge amber">Locked (Failed Attempts)</span>
                                         @else
-                                            <span class="att-adm-badge emerald">Active</span>
-                                        @endif
-                                    </td>
-                                    <td>
-                                        @if($emp['active_devices_count'] > 0)
-                                            <div style="display:flex;flex-direction:column;gap:0.25rem;">
-                                                @foreach($emp['devices'] as $dev)
-                                                    <div style="display:flex;align-items:center;gap:0.35rem;font-size:0.6875rem;">
-                                                        <span>📱 {{ $dev->device_name }} ({{ $dev->platform }})</span>
-                                                        <button
-                                                            type="button"
-                                                            wire:click="revokeDevice({{ $dev->id }})"
-                                                            wire:confirm="Revoke this device? The employee will need to re-register."
-                                                            style="color:#be123c;background:none;border:none;cursor:pointer;text-decoration:underline;font-size:0.65rem;">
-                                                            Revoke
-                                                        </button>
-                                                    </div>
-                                                @endforeach
-                                            </div>
-                                        @else
-                                            <span style="font-size:0.6875rem;color:#94a3b8;">No devices registered</span>
+                                            <span class="att-adm-badge emerald">Enabled</span>
                                         @endif
                                     </td>
                                     <td style="text-align:right;">
-                                        <div style="display:inline-flex;gap:0.35rem;">
+                                        <div style="display:inline-flex;gap:0.35rem;align-items:center;">
+                                            <!-- Auto-Generate Unique PIN -->
+                                            <button
+                                                type="button"
+                                                wire:click="generatePinForEmployee({{ $emp['id'] }})"
+                                                class="att-adm-btn att-adm-btn-emerald"
+                                                title="Generate a random unique PIN">
+                                                ⚡ Generate PIN
+                                            </button>
+
+                                            <!-- Custom PIN -->
                                             <button
                                                 type="button"
                                                 wire:click="openPinModal({{ $emp['id'] }})"
-                                                class="att-adm-btn att-adm-btn-primary">
-                                                {{ $emp['has_pin'] ? 'Reset PIN' : 'Set PIN' }}
+                                                class="att-adm-btn att-adm-btn-primary"
+                                                title="Set custom PIN">
+                                                Custom PIN
                                             </button>
 
+                                            <!-- Unlock if locked -->
+                                            @if($emp['is_locked'])
+                                                <button
+                                                    type="button"
+                                                    wire:click="unlockEmployee({{ $emp['id'] }})"
+                                                    class="att-adm-btn att-adm-btn-outline"
+                                                    style="color:#d97706;border-color:#d97706;">
+                                                    Unlock
+                                                </button>
+                                            @endif
+
+                                            <!-- Enable / Disable -->
                                             <button
                                                 type="button"
                                                 wire:click="toggleEmployeeAccess({{ $emp['id'] }})"
@@ -676,7 +619,7 @@
             <div class="att-adm-card">
                 <div class="att-adm-card-head">
                     <div>
-                        <h3 style="font-size:1rem;font-weight:800;color:#0f172a;margin:0;">Showroom & Warehouse Geofence Locations</h3>
+                        <h3 style="font-size:1rem;font-weight:800;color:#0f172a;margin:0;">Showroom &amp; Warehouse Geofence Locations</h3>
                         <p style="font-size:0.75rem;color:#64748b;margin:0;">Configure latitude, longitude, and allowed radius for physical attendance validation</p>
                     </div>
 
@@ -716,7 +659,7 @@
                                     <td style="color:#64748b;">{{ $loc->address ?: '—' }}</td>
                                     <td>
                                         <span class="att-adm-badge {{ $loc->is_active ? 'emerald' : 'gray' }}">
-                                            {{ $loc->is_active ? 'Active' : 'Inactive' }}
+                                             {{ $loc->is_active ? 'Active' : 'Inactive' }}
                                         </span>
                                     </td>
                                     <td style="text-align:right;">
@@ -753,13 +696,13 @@
             <div class="att-adm-card">
                 <div class="att-adm-card-head">
                     <div>
-                        <h3 style="font-size:1rem;font-weight:800;color:#0f172a;margin:0;">Attendance Rules & Security Policies</h3>
-                        <p style="font-size:0.75rem;color:#64748b;margin:0;">Control GPS accuracy tolerances, photo requirements, and device policies</p>
+                        <h3 style="font-size:1rem;font-weight:800;color:#0f172a;margin:0;">Attendance Rules &amp; Security Policies</h3>
+                        <p style="font-size:0.75rem;color:#64748b;margin:0;">Control GPS accuracy tolerances, geofence radius, and PIN lockout parameters</p>
                     </div>
                 </div>
 
                 <div style="display:grid;grid-template-columns:1fr;gap:1.25rem;">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
                         <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8125rem;cursor:pointer;">
                             <input type="checkbox" wire:model="attEnabled" style="width:18px;height:18px;">
                             <strong>Attendance System Enabled</strong>
@@ -769,12 +712,8 @@
                             <strong>GPS Coordinates Required</strong>
                         </label>
                         <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8125rem;cursor:pointer;">
-                            <input type="checkbox" wire:model="photoRequired" style="width:18px;height:18px;">
-                            <strong>Verification Photo Required</strong>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8125rem;cursor:pointer;">
                             <input type="checkbox" wire:model="geofencingEnabled" style="width:18px;height:18px;">
-                            <strong>Geofence Radius Enforcement Enabled</strong>
+                            <strong>Geofence Radius Enforcement</strong>
                         </label>
                     </div>
 
@@ -790,19 +729,19 @@
                         <div>
                             <label style="font-size:0.6875rem;font-weight:700;text-transform:uppercase;color:#475569;">Max Acceptable GPS Accuracy (Meters)</label>
                             <input type="number" wire:model="maxGpsAccuracy" min="10" max="500" style="width:100%;height:2.5rem;border:1px solid #d1d5db;border-radius:0.5rem;padding:0 0.75rem;margin-top:0.25rem;">
-                            <span style="font-size:0.65rem;color:#94a3b8;">Rejects readings with accuracy &gt; this threshold</span>
+                            <span style="font-size:0.65rem;color:#94a3b8;">Rejects readings with accuracy &gt; this threshold (e.g. 100m)</span>
                         </div>
 
                         <div>
-                            <label style="font-size:0.6875rem;font-weight:700;text-transform:uppercase;color:#475569;">Location Heartbeat Interval (Seconds)</label>
-                            <input type="number" wire:model="heartbeatInterval" min="60" max="600" style="width:100%;height:2.5rem;border:1px solid #d1d5db;border-radius:0.5rem;padding:0 0.75rem;margin-top:0.25rem;">
-                            <span style="font-size:0.65rem;color:#94a3b8;">Periodic update while PWA is active (default 180s)</span>
+                            <label style="font-size:0.6875rem;font-weight:700;text-transform:uppercase;color:#475569;">Max Failed PIN Attempts</label>
+                            <input type="number" wire:model="maxFailedAttempts" min="3" max="10" style="width:100%;height:2.5rem;border:1px solid #d1d5db;border-radius:0.5rem;padding:0 0.75rem;margin-top:0.25rem;">
+                            <span style="font-size:0.65rem;color:#94a3b8;">Consecutive failed entries before lockout</span>
                         </div>
 
                         <div>
-                            <label style="font-size:0.6875rem;font-weight:700;text-transform:uppercase;color:#475569;">Max Active Devices Per Employee</label>
-                            <input type="number" wire:model="maxAllowedDevices" min="1" max="5" style="width:100%;height:2.5rem;border:1px solid #d1d5db;border-radius:0.5rem;padding:0 0.75rem;margin-top:0.25rem;">
-                            <span style="font-size:0.65rem;color:#94a3b8;">Older devices auto-revoked when exceeded</span>
+                            <label style="font-size:0.6875rem;font-weight:700;text-transform:uppercase;color:#475569;">Lockout Duration (Minutes)</label>
+                            <input type="number" wire:model="lockoutMinutes" min="5" max="120" style="width:100%;height:2.5rem;border:1px solid #d1d5db;border-radius:0.5rem;padding:0 0.75rem;margin-top:0.25rem;">
+                            <span style="font-size:0.65rem;color:#94a3b8;">Lockout period before retry is permitted</span>
                         </div>
                     </div>
 
@@ -827,7 +766,7 @@
                 <div class="att-adm-card-head">
                     <div>
                         <h3 style="font-size:1rem;font-weight:800;color:#0f172a;margin:0;">Immutable Attendance Audit Trail</h3>
-                        <p style="font-size:0.75rem;color:#64748b;margin:0;">Trace of PIN resets, device pairings, revocations, and configuration modifications</p>
+                        <p style="font-size:0.75rem;color:#64748b;margin:0;">Log of PIN generation, access changes, and security events</p>
                     </div>
                 </div>
 
@@ -877,18 +816,59 @@
         @endif
 
         <!-- ================================================================= -->
-        <!-- MODAL: SET / RESET EMPLOYEE PIN -->
+        <!-- MODAL: DISPLAY GENERATED UNIQUE PIN -->
+        <!-- ================================================================= -->
+        @if($showGeneratedPinModal)
+            <div style="position:fixed;inset:0;background:rgba(0,15,43,0.65);z-index:100;display:flex;align-items:center;justify-content:center;padding:1rem;">
+                <div style="width:100%;max-width:420px;background:#ffffff;border-radius:1rem;padding:1.75rem;display:flex;flex-direction:column;gap:1.25rem;box-shadow:0 15px 35px rgba(0,0,0,0.25);text-align:center;">
+                    <div style="width:3.5rem;height:3.5rem;border-radius:9999px;background:#ecfdf5;color:#059669;display:inline-flex;align-items:center;justify-content:center;font-size:1.75rem;margin:0 auto;">
+                        🔑
+                    </div>
+
+                    <div>
+                        <h3 style="font-size:1.25rem;font-weight:900;color:#001b48;margin:0;">Unique PIN Generated</h3>
+                        <p style="font-size:0.8125rem;color:#64748b;margin-top:0.35rem;">
+                            For: <strong>{{ $generatedPinEmployeeName }}</strong>
+                        </p>
+                    </div>
+
+                    <div style="padding:1rem;background:#f8fafc;border:2px dashed #059669;border-radius:0.75rem;">
+                        <div style="font-size:0.75rem;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">Employee Attendance PIN</div>
+                        <div style="font-size:2.25rem;font-weight:900;font-family:monospace;letter-spacing:0.25em;color:#001b48;margin-top:0.25rem;">
+                            {{ $generatedPin }}
+                        </div>
+                    </div>
+
+                    <p style="font-size:0.75rem;color:#dc2626;font-weight:600;margin:0;line-height:1.4;">
+                        ⚠️ Please share this PIN with the employee immediately. For security, PINs are hashed and cannot be viewed again.
+                    </p>
+
+                    <div>
+                        <button
+                            type="button"
+                            wire:click="closeGeneratedPinModal"
+                            class="att-adm-btn att-adm-btn-primary"
+                            style="width:100%;padding:0.75rem;font-size:0.875rem;">
+                            Done / Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        <!-- ================================================================= -->
+        <!-- MODAL: SET CUSTOM EMPLOYEE PIN -->
         <!-- ================================================================= -->
         @if($showPinModal)
             <div style="position:fixed;inset:0;background:rgba(0,15,43,0.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:1rem;">
                 <div style="width:100%;max-width:400px;background:#ffffff;border-radius:1rem;padding:1.5rem;display:flex;flex-direction:column;gap:1rem;box-shadow:0 10px 25px rgba(0,0,0,0.2);">
                     <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <h3 style="font-size:1rem;font-weight:800;color:#001b48;margin:0;">Set Attendance PIN</h3>
+                        <h3 style="font-size:1rem;font-weight:800;color:#001b48;margin:0;">Set Custom Attendance PIN</h3>
                         <button type="button" wire:click="closePinModal" style="border:none;background:none;font-size:1.25rem;cursor:pointer;">✕</button>
                     </div>
 
                     <p style="font-size:0.75rem;color:#64748b;margin:0;">
-                        Enter a 4 to 8-digit numeric PIN for the employee. Existing PIN values are securely hashed and never displayed.
+                        Enter a unique 4 to 8-digit numeric PIN for the employee. The PIN is hashed at rest.
                     </p>
 
                     <div>
@@ -962,5 +942,65 @@
         @endif
 
     </div>
+
+    <!-- Leaflet Map Script -->
+    <script>
+        document.addEventListener('livewire:navigated', initLeafletMap);
+        document.addEventListener('DOMContentLoaded', initLeafletMap);
+
+        let attMap = null;
+
+        function initLeafletMap() {
+            const mapContainer = document.getElementById('att-leaflet-map');
+            if (!mapContainer) return;
+
+            if (attMap) {
+                attMap.remove();
+                attMap = null;
+            }
+
+            const defaultLat = {{ $defaultLoc ? $defaultLoc->latitude : 27.6976748 }};
+            const defaultLon = {{ $defaultLoc ? $defaultLoc->longitude : 85.3664331 }};
+            const geofenceRadius = {{ $defaultLoc ? $defaultLoc->radius_meters : 100 }};
+
+            attMap = L.map('att-leaflet-map').setView([defaultLat, defaultLon], 16);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(attMap);
+
+            // Workplace Geofence circle
+            L.circle([defaultLat, defaultLon], {
+                color: '#059669',
+                fillColor: '#10b981',
+                fillOpacity: 0.15,
+                radius: geofenceRadius
+            }).addTo(attMap).bindPopup("<strong>Laijau Showroom</strong><br>Permitted Geofence: " + geofenceRadius + "m");
+
+            // Employee active markers
+            const employees = @json($mapEmployees);
+            employees.forEach(emp => {
+                const color = emp.is_stale ? '#f59e0b' : '#10b981';
+                const marker = L.circleMarker([emp.latitude, emp.longitude], {
+                    radius: 8,
+                    fillColor: color,
+                    color: '#ffffff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.9
+                }).addTo(attMap);
+
+                marker.bindPopup(`
+                    <div style="font-family:sans-serif;font-size:12px;line-height:1.4;">
+                        <strong>${emp.name}</strong> (${emp.code})<br>
+                        Clocked In: ${emp.check_in_time}<br>
+                        Last seen: ${emp.last_updated_human}<br>
+                        Accuracy: ±${emp.accuracy || '?'}m
+                    </div>
+                `);
+            });
+        }
+    </script>
 
 </x-filament-panels::page>

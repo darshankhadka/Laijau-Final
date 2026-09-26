@@ -27,16 +27,16 @@
 
     $physicalCounted = $session && $session->closing_cash_counted !== null
         ? (float)$session->closing_cash_counted
-        : (float)$closingCashInput;
+        : (float)($this->closingCashInput ?? ($closingCashInput ?? 0));
 
     $variance = $session && $session->cash_variance !== null
         ? (float)$session->cash_variance
         : round($physicalCounted - $expectedCash, 2);
 
-    $varianceReasonCode = $session?->variance_reason_code ?: $this->varianceReasonCode;
-    $varianceReasonText = $session?->variance_reason_text ?: $this->varianceReasonText;
+    $varianceReasonCode = $session?->variance_reason_code ?: ($this->varianceReasonCode ?? '');
+    $varianceReasonText = $session?->variance_reason_text ?: ($this->varianceReasonText ?? '');
 
-    $denoms = $session?->denominations ?: $this->closingDenominations;
+    $denoms = $session?->denominations ?: ($this->closingDenominations ?? []);
 
     $payments = $calc['payment_breakdown'] ?? [];
     $salesList = $calc['sales_list'] ?? [];

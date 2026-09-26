@@ -61,15 +61,18 @@ class Employee extends Model
         'emergency_contact_relation',
         'notes',
         'attendance_pin_hash',
+        'attendance_pin_lookup_hash',
         'attendance_pin_set_at',
         'attendance_failed_attempts',
         'attendance_locked_until',
         'attendance_access_enabled',
+        'can_punch_from_anywhere',
     ];
 
     protected $hidden = [
         'cpr_encrypted',
         'attendance_pin_hash',
+        'attendance_pin_lookup_hash',
     ];
 
     protected $casts = [
@@ -85,6 +88,7 @@ class Employee extends Model
         'attendance_pin_set_at' => 'datetime',
         'attendance_locked_until' => 'datetime',
         'attendance_access_enabled' => 'boolean',
+        'can_punch_from_anywhere' => 'boolean',
     ];
 
     /**
@@ -239,6 +243,11 @@ class Employee extends Model
     |--------------------------------------------------------------------------
     */
 
+    public function attendanceAuthTokens(): HasMany
+    {
+        return $this->hasMany(\App\Models\Attendance\AttendanceAuthToken::class, 'employee_id');
+    }
+
     public function attendanceDevices(): HasMany
     {
         return $this->hasMany(\App\Models\Attendance\AttendanceDevice::class, 'employee_id');
@@ -271,6 +280,16 @@ class Employee extends Model
         return $this->hasOne(\App\Models\Attendance\AttendanceLocationUpdate::class, 'employee_id')->latestOfMany('recorded_at');
     }
 
+    public function attendanceSessions(): HasMany
+    {
+        return $this->hasMany(\App\Models\Attendance\AttendanceSession::class, 'employee_id')->orderBy('clock_in_at', 'desc');
+    }
+
+    public function openAttendanceSession(): HasOne
+    {
+        return $this->hasOne(\App\Models\Attendance\AttendanceSession::class, 'employee_id')->where('status', 'open');
+    }
+
     /**
      * Check if employee has an attendance PIN configured.
      */
@@ -280,12 +299,39 @@ class Employee extends Model
     }
 
     /**
+     * Determine if employee is allowed to punch in from anywhere (geofence exempt).
+     * Specifically and strictly authorized for Darshan Jung Khadka.
+     */
+    public function canPunchFromAnywhere(): bool
+    {
+        $isDarshan = strtolower(trim($this->first_name . ' ' . $this->last_name)) === 'darshan jung khadka'
+            || $this->employee_number === 'LJ-EMP-001'
+            || strtolower((string)$this->email) === 'admin@laijau.com';
+
+        if ($isDarshan) {
+            return true;
+        }
+
+        return (bool) ($this->can_punch_from_anywhere ?? false);
+    }
+
+    /**
+     * Compute a deterministic salted hash for fast O(1) PIN lookup.
+     */
+    public static function hashPinForLookup(string $pin): string
+    {
+        return hash_hmac('sha256', trim($pin), (string) config('app.key'));
+    }
+
+    /**
      * Set/hash a new attendance PIN.
      */
     public function setAttendancePin(string $pin): void
     {
+        $cleanPin = trim($pin);
         $this->update([
-            'attendance_pin_hash' => \Illuminate\Support\Facades\Hash::make($pin),
+            'attendance_pin_hash' => \Illuminate\Support\Facades\Hash::make($cleanPin),
+            'attendance_pin_lookup_hash' => static::hashPinForLookup($cleanPin),
             'attendance_pin_set_at' => now(),
             'attendance_failed_attempts' => 0,
             'attendance_locked_until' => null,

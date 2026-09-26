@@ -2,7 +2,7 @@
    LAIJAU EMPLOYEE ATTENDANCE PWA — SERVICE WORKER
    ========================================================================= */
 
-const CACHE_NAME = 'laijau-attendance-v2';
+const CACHE_NAME = 'laijau-attendance-v3';
 const OFFLINE_URL = '/attendance/offline';
 
 const PRECACHE_ASSETS = [

@@ -95,10 +95,6 @@
             <span>{{ Auth::user()?->name ?? 'Cashier' }}</span>
         </div>
     </div>
-
-    <!-- Center View Navigation -->
-    @include('filament.pages.offline-sales.nav')
-
     <!-- Right Quick Actions -->
     <div class="lj-topbar-actions">
         <!-- POS Shift Closing / Opening Trigger Button -->

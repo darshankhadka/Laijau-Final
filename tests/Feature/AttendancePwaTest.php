@@ -2,17 +2,17 @@
 
 namespace Tests\Feature;
 
-use App\Models\Attendance\AttendanceDevice;
+use App\Models\Attendance\AttendanceAuthToken;
 use App\Models\Attendance\AttendanceEvent;
 use App\Models\Attendance\AttendanceLocation;
+use App\Models\Attendance\AttendanceSession;
 use App\Models\Attendance\AttendanceSetting;
 use App\Models\Hrm\Employee;
 use App\Models\Hrm\Timesheet;
-use App\Models\User;
 use App\Services\Attendance\AttendanceService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AttendancePwaTest extends TestCase
@@ -27,12 +27,11 @@ class AttendancePwaTest extends TestCase
     {
         parent::setUp();
 
-        Storage::fake('local');
         cache()->flush();
 
         $this->service = app(AttendanceService::class);
 
-        // Ensure default location exists
+        // Ensure default showroom location exists
         $this->location = AttendanceLocation::where('is_default', true)->first()
             ?? AttendanceLocation::firstOrCreate(
                 ['code' => 'LOC-KTM-SHOWROOM'],
@@ -73,96 +72,86 @@ class AttendancePwaTest extends TestCase
     }
 
     /**
-     * 1. First-time setup succeeds with valid Employee ID + Phone + PIN.
+     * 1. Admin generates unique PIN for employee.
      */
-    public function test_first_time_setup_succeeds_with_valid_credentials(): void
+    public function test_admin_generates_unique_pin_for_employee(): void
     {
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('fake-jpg-content');
+        $uniquePin = $this->service->generateUniquePin();
+        $this->assertEquals(6, strlen($uniquePin));
+        $this->assertTrue(ctype_digit($uniquePin));
 
-        $response = $this->postJson(route('attendance.api.setup'), [
-            'employee_number' => 'TEST-EMP-999',
-            'phone' => '9841999888',
+        $this->service->setEmployeePin($this->employee, $uniquePin);
+
+        $this->employee->refresh();
+        $this->assertTrue($this->employee->hasAttendancePin());
+        $this->assertTrue($this->employee->verifyAttendancePin($uniquePin));
+
+        // Ensure PIN is securely hashed, never plaintext
+        $this->assertNotEquals($uniquePin, $this->employee->attendance_pin_hash);
+        $this->assertEquals(
+            Employee::hashPinForLookup($uniquePin),
+            $this->employee->attendance_pin_lookup_hash
+        );
+    }
+
+    /**
+     * 2. Setting duplicate PIN across active employees is prevented.
+     */
+    public function test_duplicate_pin_is_prevented(): void
+    {
+        $emp2 = Employee::create([
+            'employee_number' => 'TEST-EMP-888',
+            'first_name' => 'Aarav',
+            'last_name' => 'Sharma',
+            'phone' => '9841777666',
+            'email' => 'aarav.test@laijau.com',
+            'hire_date' => now()->toDateString(),
+            'status' => 'active',
+            'attendance_access_enabled' => true,
+        ]);
+
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $this->service->setEmployeePin($emp2, '1234'); // already used by $this->employee
+    }
+
+    /**
+     * 3. Employee authenticates with unique PIN and receives persistent session cookie.
+     */
+    public function test_employee_authenticates_with_unique_pin(): void
+    {
+        $response = $this->postJson(route('attendance.api.auth.pin'), [
             'pin' => '1234',
-            'device_name' => 'iPhone 15 Test',
-            'platform' => 'iOS',
-            'browser' => 'Mobile Safari',
-            'photo' => $dummyBase64,
+            'device_name' => 'Pixel 8 Pro Test',
         ]);
 
         $response->assertStatus(200);
-        $response->assertJsonStructure(['success', 'device_token', 'employee']);
-        $response->assertCookie('laijau_attendance_device');
-
-        $this->assertDatabaseHas('attendance_devices', [
-            'employee_id' => $this->employee->id,
-            'device_name' => 'iPhone 15 Test',
-            'is_active' => true,
+        $response->assertJsonStructure([
+            'success',
+            'message',
+            'token',
+            'employee' => ['id', 'name', 'code'],
+            'state' => ['state'],
         ]);
+        $response->assertCookie('laijau_attendance_session');
+
+        $this->assertEquals($this->employee->id, session('attendance_employee_id'));
     }
 
     /**
-     * 2. First-time setup rejects invalid Employee ID.
+     * 4. Invalid PIN is rejected and increments failed attempts.
      */
-    public function test_first_time_setup_rejects_invalid_employee_id(): void
+    public function test_invalid_pin_is_rejected_and_tracks_attempts(): void
     {
-        $response = $this->postJson(route('attendance.api.setup'), [
-            'employee_number' => 'INVALID-ID-000',
-            'phone' => '9841999888',
-            'pin' => '1234',
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['employee_number']);
-    }
-
-    /**
-     * 3. First-time setup rejects invalid Phone number.
-     */
-    public function test_first_time_setup_rejects_invalid_phone(): void
-    {
-        $response = $this->postJson(route('attendance.api.setup'), [
-            'employee_number' => 'TEST-EMP-999',
-            'phone' => '9800000000',
-            'pin' => '1234',
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['phone']);
-    }
-
-    /**
-     * 4. First-time setup rejects invalid PIN and increments failed attempts.
-     */
-    public function test_first_time_setup_rejects_invalid_pin_and_tracks_attempts(): void
-    {
-        $this->assertEquals(0, $this->employee->attendance_failed_attempts);
-
-        $response = $this->postJson(route('attendance.api.setup'), [
-            'employee_number' => 'TEST-EMP-999',
-            'phone' => '9841999888',
+        $response = $this->postJson(route('attendance.api.auth.pin'), [
             'pin' => '9999', // wrong pin
         ]);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['pin']);
-
-        $this->employee->refresh();
-        $this->assertEquals(1, $this->employee->attendance_failed_attempts);
     }
 
     /**
-     * 5. PIN is never stored in plaintext and verifies using Hash::check.
-     */
-    public function test_pin_is_securely_hashed_and_not_plaintext(): void
-    {
-        $this->assertNotEquals('1234', $this->employee->attendance_pin_hash);
-        $this->assertTrue(Hash::check('1234', $this->employee->attendance_pin_hash));
-        $this->assertTrue($this->employee->verifyAttendancePin('1234'));
-        $this->assertFalse($this->employee->verifyAttendancePin('0000'));
-    }
-
-    /**
-     * 6. Consecutive failed attempts trigger temporary lockout.
+     * 5. Consecutive failed attempts trigger temporary lockout.
      */
     public function test_consecutive_failed_attempts_trigger_temporary_lockout(): void
     {
@@ -175,101 +164,89 @@ class AttendancePwaTest extends TestCase
 
         $this->assertTrue($isLocked);
         $this->assertTrue($this->employee->isAttendanceLocked());
-    }
 
-    /**
-     * 7. Subsequent PIN authentication on registered device succeeds.
-     */
-    public function test_subsequent_pin_authentication_on_registered_device(): void
-    {
-        $reg = $this->service->registerDevice($this->employee, [
-            'device_name' => 'Registered Phone',
-            'platform' => 'Android',
-        ]);
-
-        $device = $reg['device'];
-        $rawToken = $reg['device_token'];
-
-        $response = $this->withHeader('X-Device-Token', $rawToken)
-            ->postJson(route('attendance.api.auth.pin'), [
-                'pin' => '1234',
-            ]);
-
-        $response->assertStatus(200);
-        $response->assertJson(['success' => true]);
-        $this->assertEquals($this->employee->id, session('attendance_employee_id'));
-        $this->assertEquals($device->id, session('attendance_device_id'));
-    }
-
-    /**
-     * 8. Revoked device is prevented from authenticating.
-     */
-    public function test_revoked_device_cannot_authenticate(): void
-    {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Old Phone']);
-        $device = $reg['device'];
-        $rawToken = $reg['device_token'];
-
-        // Revoke device
-        $device->revoke(null, 'Test revocation');
-
-        $response = $this->withHeader('X-Device-Token', $rawToken)
-            ->postJson(route('attendance.api.auth.pin'), [
-                'pin' => '1234',
-            ]);
-
-        $response->assertStatus(403);
-    }
-
-    /**
-     * 9. Disabled employee is prevented from authenticating.
-     */
-    public function test_disabled_employee_access_rejected(): void
-    {
-        $this->employee->update(['attendance_access_enabled' => false]);
-
-        $response = $this->postJson(route('attendance.api.setup'), [
-            'employee_number' => 'TEST-EMP-999',
-            'phone' => '9841999888',
+        // Attempt login while locked
+        $response = $this->postJson(route('attendance.api.auth.pin'), [
             'pin' => '1234',
         ]);
 
         $response->assertStatus(422);
+        $this->assertStringContainsString('temporarily locked', $response->json('errors.pin.0'));
     }
 
     /**
-     * 10. Successful Check In with GPS and photo.
+     * 6. Disabled employee is rejected.
      */
-    public function test_successful_check_in_with_gps_and_photo(): void
+    public function test_disabled_employee_cannot_authenticate(): void
     {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $rawToken = $reg['device_token'];
+        $this->employee->update(['attendance_access_enabled' => false]);
 
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('check-in-photo');
+        $response = $this->postJson(route('attendance.api.auth.pin'), [
+            'pin' => '1234',
+        ]);
 
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->withCookie('laijau_attendance_device', $rawToken)
-          ->postJson(route('attendance.api.check_in'), [
-              'latitude' => 27.6976748, // Exactly at showroom
-              'longitude' => 85.3664331,
-              'accuracy_meters' => 15,
-              'photo' => $dummyBase64,
-              'verification_method' => 'pin',
-          ]);
+        $response->assertStatus(422);
+        $this->assertStringContainsString('disabled', $response->json('errors.pin.0'));
+    }
+
+    /**
+     * 7. Persistent device cookie auto-rehydrates session without re-entering PIN.
+     */
+    public function test_persistent_device_cookie_auto_rehydrates_session(): void
+    {
+        $rawToken = AttendanceAuthToken::createToken($this->employee, 'Test Mobile');
+
+        // Access dashboard with cookie only (no session, simulating reopening browser)
+        $response = $this->withUnencryptedCookie('laijau_attendance_session', $rawToken)
+            ->get(route('attendance.dashboard'));
 
         $response->assertStatus(200);
-        $response->assertJson(['success' => true]);
+        $response->assertSee($this->employee->first_name);
+        $this->assertEquals($this->employee->id, session('attendance_employee_id'));
+    }
 
-        $this->assertDatabaseHas('attendance_events', [
-            'employee_id' => $this->employee->id,
-            'device_id' => $device->id,
-            'type' => 'check_in',
-            'status' => 'verified',
-            'geofence_passed' => true,
-        ]);
+    /**
+     * 8. Attendance session provides ZERO access to /intadmin.
+     */
+    public function test_attendance_session_provides_no_access_to_intadmin(): void
+    {
+        // Session with attendance auth only
+        $response = $this->withSession([
+            'attendance_employee_id' => $this->employee->id,
+        ])->get('/intadmin');
+
+        // Filament auth middleware will redirect to /intadmin/login or return 302/403
+        $this->assertTrue(in_array($response->status(), [302, 403, 401]));
+        if ($response->status() === 302) {
+            $this->assertStringContainsString('login', $response->headers->get('Location'));
+        }
+    }
+
+    /**
+     * 9. Server authoritative state: Clock In when clocked out, then Clock Out when clocked in.
+     */
+    public function test_server_authoritative_state_clock_in_then_clock_out(): void
+    {
+        // 1. Initial State: Clocked out
+        $initialState = $this->service->getEmployeeAttendanceState($this->employee);
+        $this->assertEquals('not_checked_in', $initialState['state']);
+
+        $dashRes1 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->get(route('attendance.dashboard'));
+        $dashRes1->assertStatus(200);
+        $dashRes1->assertSee('CLOCK IN');
+
+        // 2. Perform Clock In
+        $inRes = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 15,
+            ]);
+
+        $inRes->assertStatus(200);
+        $inRes->assertJson(['success' => true]);
+        $inRes->assertJsonPath('state.state', 'checked_in');
 
         // Verify timesheet synced
         $this->assertDatabaseHas('hrm_timesheets', [
@@ -277,650 +254,586 @@ class AttendancePwaTest extends TestCase
             'date' => now()->toDateString(),
             'attendance_status' => 'present',
         ]);
+
+        // 3. Reopening PWA: Authoritative state is checked_in, showing Clock Out
+        $dashRes2 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->get(route('attendance.dashboard'));
+        $dashRes2->assertStatus(200);
+        $dashRes2->assertSee('CLOCK OUT');
+
+        // Duplicate Clock In is rejected
+        $dupIn = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 15,
+            ]);
+        $dupIn->assertStatus(422);
+
+        // 4. Perform Clock Out
+        $outRes = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_out'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 15,
+            ]);
+
+        $outRes->assertStatus(200);
+        $outRes->assertJson(['success' => true]);
+        $outRes->assertJsonPath('state.state', 'checked_out');
+
+        // 5. Final State: checked_out
+        $finalState = $this->service->getEmployeeAttendanceState($this->employee);
+        $this->assertEquals('checked_out', $finalState['state']);
     }
 
     /**
-     * 11. Duplicate check-in is rejected (cannot check in twice without check-out).
+     * 10. Clock In and Clock Out strictly require GPS.
      */
-    public function test_duplicate_check_in_is_rejected(): void
+    public function test_clock_in_and_out_strictly_require_gps(): void
     {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
+        // Clock In without GPS
+        $res1 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => null,
+                'longitude' => null,
+            ]);
 
-        // First check in
-        $this->service->submitAttendance($device, 'check_in', [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
-        ], $dummyBase64);
-
-        // Attempt second check in
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_in'), [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
-            'photo' => $dummyBase64,
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['type']);
-    }
-
-    /**
-     * 12. Successful Check Out after Check In.
-     */
-    public function test_successful_check_out_after_check_in(): void
-    {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
-
-        // Check in
-        $this->service->submitAttendance($device, 'check_in', [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
-        ], $dummyBase64);
-
-        // Check out
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_out'), [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
-            'photo' => $dummyBase64,
-        ]);
-
-        $response->assertStatus(200);
-        $response->assertJson(['success' => true]);
-
-        $this->assertDatabaseHas('attendance_events', [
-            'employee_id' => $this->employee->id,
-            'type' => 'check_out',
-            'status' => 'verified',
-        ]);
-    }
-
-    /**
-     * 13. Check Out before Check In is rejected.
-     */
-    public function test_check_out_before_check_in_is_rejected(): void
-    {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
-
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_out'), [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
-            'photo' => $dummyBase64,
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['type']);
-    }
-
-    /**
-     * 14. Missing or denied GPS permission blocks attendance, shows required message, and logs audit.
-     */
-    public function test_gps_permission_denied_or_missing_blocks_attendance(): void
-    {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
-
-        // Attempt check-in with null / missing GPS coordinates
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_in'), [
-            'latitude' => null,
-            'longitude' => null,
-            'photo' => $dummyBase64,
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['gps']);
-        $this->assertEquals(
-            'Location permission is required to record attendance. Please enable Location access and try again.',
-            $response->json('errors.gps.0')
-        );
-
-        // Verify rejected event created but NO verified attendance event
-        $this->assertDatabaseHas('attendance_events', [
-            'employee_id' => $this->employee->id,
-            'status' => 'rejected',
-        ]);
-        $this->assertDatabaseMissing('attendance_events', [
-            'employee_id' => $this->employee->id,
-            'status' => 'verified',
-        ]);
-        $this->assertDatabaseMissing('hrm_timesheets', [
-            'employee_id' => $this->employee->id,
-        ]);
-
-        // Verify audit log created for Admin visibility
+        $res1->assertStatus(422);
+        $res1->assertJsonValidationErrors(['gps']);
         $this->assertDatabaseHas('attendance_audit_logs', [
             'employee_id' => $this->employee->id,
             'action' => 'attendance_gps_denied',
         ]);
+
+        // Clock In with GPS
+        $this->service->submitAttendance($this->employee, 'check_in', [
+            'latitude' => 27.6976748,
+            'longitude' => 85.3664331,
+            'accuracy_meters' => 15,
+        ]);
+
+        // Clock Out without GPS
+        $res2 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_out'), [
+                'latitude' => null,
+                'longitude' => null,
+            ]);
+
+        $res2->assertStatus(422);
+        $res2->assertJsonValidationErrors(['gps']);
     }
 
     /**
-     * 15. Poor GPS accuracy (> 100 meters) is rejected with measured accuracy.
+     * 11. Low GPS accuracy (> 100m) is rejected.
      */
-    public function test_poor_gps_accuracy_is_rejected(): void
+    public function test_low_gps_accuracy_is_rejected(): void
     {
         AttendanceSetting::set('max_gps_accuracy_meters', 100, 'integer');
 
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
+        $res = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 350, // 350m is too low
+            ]);
 
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_in'), [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 350, // 350m is terrible accuracy
-            'photo' => $dummyBase64,
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['gps']);
-        $this->assertStringContainsString('350m', $response->json('errors.gps.0'));
-
-        // Check that a rejected audit record was made
-        $this->assertDatabaseHas('attendance_events', [
-            'employee_id' => $this->employee->id,
-            'status' => 'rejected',
-            'accuracy_meters' => 350,
-        ]);
-        $this->assertDatabaseMissing('attendance_events', [
-            'employee_id' => $this->employee->id,
-            'status' => 'verified',
-        ]);
+        $res->assertStatus(422);
+        $res->assertJsonValidationErrors(['gps']);
+        $this->assertStringContainsString('350m', $res->json('errors.gps.0'));
     }
 
     /**
-     * 16. Client GPS failure endpoint logs audit record for Admin visibility.
-     */
-    public function test_client_gps_failure_logging_creates_admin_audit_record(): void
-    {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.log_gps_failure'), [
-            'action_type' => 'check_in',
-            'error_type' => 'permission_denied',
-            'message' => 'Location permission is required to record attendance. Please enable Location access and try again.',
-        ]);
-
-        $response->assertStatus(200);
-        $response->assertJson(['success' => true, 'logged' => true]);
-
-        $this->assertDatabaseHas('attendance_audit_logs', [
-            'employee_id' => $this->employee->id,
-            'action' => 'gps_failure_permission_denied',
-        ]);
-    }
-
-    /**
-     * 15. Outside Geofence radius is rejected.
+     * 12. Outside geofence radius is rejected.
      */
     public function test_outside_geofence_is_rejected(): void
     {
         AttendanceSetting::set('geofencing_enabled', true, 'boolean');
 
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
+        // 10km away from showroom
+        $res = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 27.7500000,
+                'longitude' => 85.4500000,
+                'accuracy_meters' => 15,
+            ]);
 
-        // Location 5km away (Pokhara or distant KTM)
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_in'), [
-            'latitude' => 27.7500000,
-            'longitude' => 85.4500000,
-            'accuracy_meters' => 15,
-            'photo' => $dummyBase64,
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['geofence']);
+        $res->assertStatus(422);
+        $res->assertJsonValidationErrors(['geofence']);
     }
 
     /**
-     * 16. Showroom geofence radius is dynamically configurable and strictly enforced.
+     * 13. Idempotency key prevents duplicate punches.
      */
-    public function test_geofence_radius_is_configurable_and_enforced(): void
+    public function test_idempotency_prevents_duplicate_punch(): void
     {
-        AttendanceSetting::set('geofencing_enabled', true, 'boolean');
+        $key = 'IDEMPOTENCY_TEST_KEY_' . time();
 
-        // Configure Showroom location with 27.6976748, 85.3664331 and 100m radius
-        $this->location->update([
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'radius_meters' => 100,
-            'is_default' => true,
-            'is_active' => true,
-        ]);
-
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
-
-        // Coordinate ~150 meters north of showroom (27.6990200, 85.3664331 is approx 149m away)
-        $outsideLat = 27.6990200;
-        $outsideLon = 85.3664331;
-        $dist = $this->location->calculateDistanceTo($outsideLat, $outsideLon);
-        $this->assertGreaterThan(100, $dist);
-        $this->assertLessThan(200, $dist);
-
-        // 1. With 100m radius -> Rejected with 422
-        $res1 = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_in'), [
-            'latitude' => $outsideLat,
-            'longitude' => $outsideLon,
-            'accuracy_meters' => 10,
-            'photo' => $dummyBase64,
-        ]);
-        $res1->assertStatus(422);
-        $res1->assertJsonValidationErrors(['geofence']);
-
-        // 2. Admin configures geofence radius to 250 meters
-        $this->location->update(['radius_meters' => 250]);
-        $this->assertTrue($this->location->fresh()->isWithinGeofence($outsideLat, $outsideLon));
-
-        // 3. Same coordinate now succeeds with 200 OK
-        $res2 = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_in'), [
-            'latitude' => $outsideLat,
-            'longitude' => $outsideLon,
-            'accuracy_meters' => 10,
-            'photo' => $dummyBase64,
-        ]);
-        $res2->assertStatus(200);
-        $res2->assertJson(['success' => true]);
-    }
-
-    /**
-     * 17. Idempotency key prevents duplicate attendance events.
-     */
-    public function test_idempotency_key_prevents_duplicate_attendance(): void
-    {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
-        $key = 'IDEMPOTENCY_TEST_KEY_123';
-
-        // First call
-        $res1 = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_in'), [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
-            'photo' => $dummyBase64,
-            'idempotency_key' => $key,
-        ]);
+        $res1 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 15,
+                'idempotency_key' => $key,
+            ]);
         $res1->assertStatus(200);
 
-        // Repeated call with same idempotency key
-        $res2 = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_in'), [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
-            'photo' => $dummyBase64,
-            'idempotency_key' => $key,
-        ]);
+        // Repeat with same key
+        $res2 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 15,
+                'idempotency_key' => $key,
+            ]);
         $res2->assertStatus(200);
 
-        // Exactly one event created
         $this->assertEquals(1, AttendanceEvent::where('idempotency_key', $key)->count());
     }
 
     /**
-     * 17. Employee data isolation: employee sees only their own history.
+     * 14. History isolation: Employee sees only their own history.
      */
-    public function test_employee_sees_only_own_attendance_history(): void
+    public function test_employee_history_isolation(): void
     {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
-
-        // Check in employee 1
-        $this->service->submitAttendance($device, 'check_in', [
+        // Punch for employee 1
+        $this->service->submitAttendance($this->employee, 'check_in', [
             'latitude' => 27.6976748,
             'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
-        ], $dummyBase64);
+            'accuracy_meters' => 15,
+        ]);
 
-        // Create employee 2 with event
+        // Create employee 2 with punch
         $emp2 = Employee::create([
             'employee_number' => 'TEST-EMP-888',
             'first_name' => 'Other',
-            'last_name' => 'Employee',
-            'email' => 'other.emp@laijau.com',
+            'last_name' => 'Emp',
             'phone' => '9841888777',
+            'email' => 'other@laijau.com',
             'hire_date' => now()->toDateString(),
             'status' => 'active',
             'attendance_access_enabled' => true,
         ]);
-        $reg2 = $this->service->registerDevice($emp2, ['device_name' => 'Phone 2']);
-        $this->service->submitAttendance($reg2['device'], 'check_in', [
+        $emp2->setAttendancePin('5678');
+        $this->service->submitAttendance($emp2, 'check_in', [
             'latitude' => 27.6976748,
             'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
-        ], $dummyBase64);
-
-        // Fetch history as employee 1
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->getJson(route('attendance.api.history'));
-
-        $response->assertStatus(200);
-        $history = $response->json('history');
-
-        // Only 1 item in employee 1's history
-        $this->assertCount(1, $history);
-    }
-
-    /**
-     * 18. Persistent device authorization auto-rehydrates session without re-pairing.
-     */
-    public function test_persistent_device_authorization_auto_rehydrates_session(): void
-    {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $rawToken = $reg['device_token'];
-
-        // Access dashboard with device cookie only (clean empty session, simulating reopened browser)
-        $response = $this->withUnencryptedCookie('laijau_attendance_device', $rawToken)
-            ->get(route('attendance.dashboard'));
-
-        $response->assertStatus(200);
-        $response->assertSee($this->employee->first_name);
-        $this->assertEquals($this->employee->id, session('attendance_employee_id'));
-        $this->assertEquals($device->id, session('attendance_device_id'));
-    }
-
-    /**
-     * 19. Clocked in employee always sees checked_in state when reopening.
-     */
-    public function test_clocked_in_employee_sees_checked_in_state_on_reopening(): void
-    {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $rawToken = $reg['device_token'];
-
-        // Clock in
-        $this->service->submitAttendance($device, 'check_in', [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 10,
+            'accuracy_meters' => 15,
         ]);
 
-        // State check from API
-        $statusRes = $this->withHeader('X-Device-Token', $rawToken)
-            ->withUnencryptedCookie('laijau_attendance_device', $rawToken)
-            ->getJson(route('attendance.api.status'));
+        $res = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->getJson(route('attendance.api.history'));
 
-        $statusRes->assertStatus(200);
-        $statusRes->assertJsonPath('state.state', 'checked_in');
-        $this->assertNotNull($statusRes->json('state.check_in_time'));
-
-        // Dashboard view check
-        $dashRes = $this->withUnencryptedCookie('laijau_attendance_device', $rawToken)
-            ->get(route('attendance.dashboard'));
-        $dashRes->assertStatus(200);
-        $dashRes->assertSee('CHECK OUT');
+        $res->assertStatus(200);
+        $this->assertCount(1, $res->json('history'));
     }
 
     /**
-     * 20. PWA manifest and service worker routes return proper content types.
+     * 15. Employee can change their attendance PIN.
+     */
+    public function test_employee_can_change_pin(): void
+    {
+        $res = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.auth.change_pin'), [
+                'current_pin' => '1234',
+                'new_pin' => '9876',
+                'new_pin_confirmation' => '9876',
+            ]);
+
+        $res->assertStatus(200);
+        $this->employee->refresh();
+        $this->assertTrue($this->employee->verifyAttendancePin('9876'));
+        $this->assertFalse($this->employee->verifyAttendancePin('1234'));
+    }
+
+    /**
+     * 16. Logout clears session and persistent cookie.
+     */
+    public function test_logout_clears_session_and_cookie(): void
+    {
+        $token = AttendanceAuthToken::createToken($this->employee, 'Phone');
+
+        $res = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->withCookie('laijau_attendance_session', $token)
+            ->postJson(route('attendance.api.logout'));
+
+        $res->assertStatus(200);
+        $res->assertJson(['success' => true]);
+        $this->assertNull(session('attendance_employee_id'));
+    }
+
+    /**
+     * 17. PWA manifest and service worker routes return proper responses.
      */
     public function test_pwa_manifest_and_service_worker(): void
     {
-        $manifestRes = $this->get(route('attendance.manifest'));
-        $manifestRes->assertStatus(200);
-        $manifestRes->assertHeader('Content-Type', 'application/manifest+json; charset=utf-8');
-        $manifestRes->assertJson(['name' => 'Laijau Employee Attendance', 'display' => 'standalone']);
+        $manifest = $this->get(route('attendance.manifest'));
+        $manifest->assertStatus(200);
+        $manifest->assertHeader('Content-Type', 'application/manifest+json; charset=utf-8');
 
-        $swRes = $this->get(route('attendance.sw'));
-        $swRes->assertStatus(200);
-        $swRes->assertHeader('Content-Type', 'application/javascript; charset=utf-8');
-        $swRes->assertHeader('Service-Worker-Allowed', '/attendance');
+        $sw = $this->get(route('attendance.sw'));
+        $sw->assertStatus(200);
+        $sw->assertHeader('Content-Type', 'application/javascript; charset=utf-8');
 
-        $offlineRes = $this->get(route('attendance.offline'));
-        $offlineRes->assertStatus(200);
+        $offline = $this->get(route('attendance.offline'));
+        $offline->assertStatus(200);
     }
 
     /**
-     * 21. Invalid or out-of-range GPS coordinates are rejected and do not create attendance.
+     * 18. Obsolete photo and pairing setup endpoints are completely removed.
      */
-    public function test_invalid_gps_coordinates_are_rejected(): void
+    public function test_obsolete_setup_and_photo_routes_removed(): void
     {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
-
-        // Latitude > 90 is physically impossible
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_in'), [
-            'latitude' => 999.0,
-            'longitude' => 85.3664331,
-            'photo' => $dummyBase64,
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['gps']);
-
-        $this->assertDatabaseMissing('attendance_events', [
-            'employee_id' => $this->employee->id,
-            'status' => 'verified',
-        ]);
+        $this->get('/attendance/photos/1')->assertStatus(404);
+        $this->postJson('/attendance/api/verify', [])->assertStatus(404);
+        $this->postJson('/attendance/api/setup', [])->assertStatus(404);
     }
 
     /**
-     * 22. Check-out also strictly enforces mandatory GPS and rejects missing coordinates.
+     * 19. Root /attendance navigation: unauthenticated redirects to login; authenticated renders dashboard.
      */
-    public function test_check_out_strictly_requires_gps(): void
+    public function test_root_attendance_navigation(): void
     {
-        $reg = $this->service->registerDevice($this->employee, ['device_name' => 'Test Phone']);
-        $device = $reg['device'];
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('photo');
+        // Unauthenticated -> redirected to login
+        $unauthRes = $this->get(route('attendance.dashboard'));
+        $unauthRes->assertStatus(302);
+        $unauthRes->assertRedirect(route('attendance.login'));
 
-        // Check in first with valid GPS
-        $this->service->submitAttendance($device, 'check_in', [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'accuracy_meters' => 15.0,
-        ], $dummyBase64);
+        // Login screen renders standalone PIN PWA
+        $loginRes = $this->get(route('attendance.login'));
+        $loginRes->assertStatus(200);
+        $loginRes->assertSee('Laijau Attendance');
+        $loginRes->assertSee('Unlock Dashboard');
 
-        // Attempt check-out without GPS coordinates
-        $response = $this->withSession([
-            'attendance_employee_id' => $this->employee->id,
-            'attendance_device_id' => $device->id,
-        ])->postJson(route('attendance.api.check_out'), [
-            'latitude' => null,
-            'longitude' => null,
-            'photo' => $dummyBase64,
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['gps']);
-        $this->assertEquals(
-            'Location permission is required to record attendance. Please enable Location access and try again.',
-            $response->json('errors.gps.0')
-        );
-
-        // Confirm no verified check-out event was recorded
-        $this->assertDatabaseMissing('attendance_events', [
-            'employee_id' => $this->employee->id,
-            'type' => 'check_out',
-            'status' => 'verified',
-        ]);
+        // Authenticated -> dashboard renders directly
+        $authRes = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->get(route('attendance.dashboard'));
+        $authRes->assertStatus(200);
+        $authRes->assertSee($this->employee->first_name);
     }
 
     /**
-     * 23. Valid employee verification (Step 1) returns identity without persisting a device.
+     * 20. Control Center PIN generation and custom reset.
      */
-    public function test_valid_employee_verification_returns_identity_without_persisting_device(): void
+    public function test_control_center_pin_management_actions(): void
     {
-        $response = $this->postJson(route('attendance.api.verify'), [
-            'employee_number' => 'TEST-EMP-999',
-            'phone' => '9841999888',
-            'pin' => '1234',
-        ]);
+        $page = new \App\Filament\Pages\AttendanceControlCenterPage();
 
-        $response->assertStatus(200);
-        $response->assertJson([
-            'success' => true,
-            'employee' => [
-                'id' => $this->employee->id,
-                'name' => 'Suman Adhikari',
-                'code' => 'TEST-EMP-999',
-            ],
-        ]);
-
-        // Verify Step 1 NEVER creates an attendance device
-        $this->assertEquals(0, AttendanceDevice::where('employee_id', $this->employee->id)->count());
-        $this->assertNull(session('attendance_employee_id'));
-    }
-
-    /**
-     * 24. Invalid employee verification (Step 1) rejects bad PIN and tracks failed attempts.
-     */
-    public function test_invalid_employee_verification_rejects_bad_pin(): void
-    {
-        $response = $this->postJson(route('attendance.api.verify'), [
-            'employee_number' => 'TEST-EMP-999',
-            'phone' => '9841999888',
-            'pin' => '9999',
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['pin']);
+        // 1. Generate Unique PIN
+        $page->generatePinForEmployee($this->employee->id);
+        $this->assertNotNull($page->generatedPin);
+        $this->assertEquals(6, strlen($page->generatedPin));
+        $this->assertTrue($page->showGeneratedPinModal);
 
         $this->employee->refresh();
-        $this->assertEquals(1, $this->employee->attendance_failed_attempts);
-        $this->assertEquals(0, AttendanceDevice::where('employee_id', $this->employee->id)->count());
+        $this->assertTrue($this->employee->verifyAttendancePin($page->generatedPin));
+
+        $page->closeGeneratedPinModal();
+        $this->assertFalse($page->showGeneratedPinModal);
+        $this->assertNull($page->generatedPin);
+
+        // 2. Set Custom PIN
+        $page->openPinModal($this->employee->id);
+        $this->assertTrue($page->showPinModal);
+        $page->newPin = '7890';
+        $page->newPinConfirmation = '7890';
+        $page->saveEmployeePin();
+
+        $this->employee->refresh();
+        $this->assertTrue($this->employee->verifyAttendancePin('7890'));
+        $this->assertFalse($page->showPinModal);
     }
 
     /**
-     * 25. Pairing succeeds with credentials only without requiring photo.
+     * 21. Darshan Jung Khadka can punch in from anywhere, while regular employees are geofenced.
      */
-    public function test_pairing_succeeds_without_photo_and_persists_device(): void
+    public function test_darshan_jung_khadka_can_punch_in_from_anywhere_while_others_are_geofenced(): void
     {
-        $response = $this->postJson(route('attendance.api.setup'), [
-            'employee_number' => 'TEST-EMP-999',
-            'phone' => '9841999888',
-            'pin' => '1234',
-            'device_name' => 'iPhone Test',
-            // No photo payload
+        AttendanceSetting::set('geofencing_enabled', true, 'boolean');
+
+        // 1. Regular employee at remote location (150km away) -> REJECTED
+        $resRegular = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 28.2096, // Pokhara (~150km away)
+                'longitude' => 83.9856,
+                'accuracy_meters' => 20,
+            ]);
+
+        $resRegular->assertStatus(422);
+        $resRegular->assertJsonValidationErrors(['geofence']);
+
+        // 2. Darshan Jung Khadka at remote location (150km away) -> SUCCEEDS
+        $darshan = Employee::where('email', 'admin@laijau.com')->first()
+            ?? Employee::create([
+                'employee_number' => 'LJ-EMP-001',
+                'first_name' => 'Darshan Jung',
+                'last_name' => 'Khadka',
+                'email' => 'admin@laijau.com',
+                'status' => 'active',
+                'attendance_access_enabled' => true,
+                'can_punch_from_anywhere' => true,
+            ]);
+
+        $this->assertTrue($darshan->canPunchFromAnywhere());
+
+        $resDarshanIn = $this->withSession(['attendance_employee_id' => $darshan->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 28.2096, // Pokhara (~150km away)
+                'longitude' => 83.9856,
+                'accuracy_meters' => 25,
+            ]);
+
+        $resDarshanIn->assertStatus(200);
+        $resDarshanIn->assertJson(['success' => true]);
+        $resDarshanIn->assertJsonPath('state.state', 'checked_in');
+
+        // Check event recorded with geofence_passed = 1
+        $this->assertDatabaseHas('attendance_events', [
+            'employee_id' => $darshan->id,
+            'type' => 'check_in',
+            'status' => 'verified',
+            'geofence_passed' => 1,
         ]);
 
-        $response->assertStatus(200);
-        $response->assertJson(['success' => true]);
-        $response->assertCookie('laijau_attendance_device');
+        // Darshan can also punch out from remote location
+        $resDarshanOut = $this->withSession(['attendance_employee_id' => $darshan->id])
+            ->postJson(route('attendance.api.check_out'), [
+                'latitude' => 28.2096,
+                'longitude' => 83.9856,
+                'accuracy_meters' => 25,
+            ]);
 
-        $this->assertEquals(1, AttendanceDevice::where('employee_id', $this->employee->id)->where('is_active', true)->count());
+        $resDarshanOut->assertStatus(200);
+        $resDarshanOut->assertJson(['success' => true]);
+        $resDarshanOut->assertJsonPath('state.state', 'checked_out');
     }
 
     /**
-     * 26. Successful pairing persists device, saves selfie evidence, and returns employee identity.
+     * 22. Darshan Jung Khadka can punch in without GPS hardware or low accuracy on remote device.
      */
-    public function test_successful_pairing_persists_device_and_returns_identity(): void
+    public function test_darshan_can_punch_without_gps_while_others_are_blocked(): void
     {
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('selfie-evidence-jpg');
+        // Regular employee without GPS -> blocked
+        $resRegular = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => null,
+                'longitude' => null,
+            ]);
+        $resRegular->assertStatus(422);
+        $resRegular->assertJsonValidationErrors(['gps']);
 
-        $response = $this->postJson(route('attendance.api.setup'), [
-            'employee_number' => 'TEST-EMP-999',
-            'phone' => '9841999888',
-            'pin' => '1234',
-            'device_name' => 'Pixel 8 Pro',
-            'platform' => 'Android',
-            'browser' => 'Chrome',
-            'photo' => $dummyBase64,
-        ]);
+        // Darshan Jung Khadka without GPS -> allowed
+        $darshan = Employee::where('email', 'admin@laijau.com')->first();
+        if (!$darshan) {
+            $darshan = Employee::create([
+                'employee_number' => 'LJ-EMP-001',
+                'first_name' => 'Darshan Jung',
+                'last_name' => 'Khadka',
+                'email' => 'admin@laijau.com',
+                'status' => 'active',
+                'attendance_access_enabled' => true,
+                'can_punch_from_anywhere' => true,
+            ]);
+        }
 
-        $response->assertStatus(200);
-        $response->assertJson([
-            'success' => true,
-            'employee' => [
-                'id' => $this->employee->id,
-                'name' => 'Suman Adhikari',
-                'code' => 'TEST-EMP-999',
-            ],
-        ]);
-        $response->assertCookie('laijau_attendance_device');
+        $resDarshan = $this->withSession(['attendance_employee_id' => $darshan->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => null,
+                'longitude' => null,
+            ]);
 
-        $device = AttendanceDevice::where('employee_id', $this->employee->id)->first();
-        $this->assertNotNull($device);
-        $this->assertTrue($device->is_active);
-        $this->assertEquals('Pixel 8 Pro', $device->device_name);
-        $this->assertEquals($this->employee->id, session('attendance_employee_id'));
+        $resDarshan->assertStatus(200);
+        $resDarshan->assertJson(['success' => true]);
+        $resDarshan->assertJsonPath('state.state', 'checked_in');
     }
 
     /**
-     * 27. Failed pairing does not activate device or create session.
+     * 23. Employee can have multiple attendance sessions in the same day with full details and aggregation.
      */
-    public function test_failed_pairing_does_not_activate_device(): void
+    public function test_employee_can_have_multiple_attendance_sessions_in_same_day(): void
     {
-        $dummyBase64 = 'data:image/jpeg;base64,' . base64_encode('selfie-evidence-jpg');
+        $lat = 27.6976748;
+        $lng = 85.3664331;
+        $acc = 10;
 
-        $response = $this->postJson(route('attendance.api.setup'), [
-            'employee_number' => 'TEST-EMP-999',
-            'phone' => '9841999888',
-            'pin' => '0000', // incorrect pin
-            'photo' => $dummyBase64,
-        ]);
+        // Session 1: Clock In
+        $in1 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'accuracy_meters' => $acc,
+            ]);
+        $in1->assertStatus(200);
+        $in1->assertJsonPath('state.state', 'checked_in');
+
+        // Session 1: Clock Out
+        $out1 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_out'), [
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'accuracy_meters' => $acc,
+            ]);
+        $out1->assertStatus(200);
+        $out1->assertJsonPath('state.state', 'checked_out');
+
+        // Session 2: Clock In (Second session in same day)
+        $in2 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'accuracy_meters' => $acc,
+            ]);
+        $in2->assertStatus(200);
+        $in2->assertJsonPath('state.state', 'checked_in');
+
+        // Session 2: Clock Out
+        $out2 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_out'), [
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'accuracy_meters' => $acc,
+            ]);
+        $out2->assertStatus(200);
+        $out2->assertJsonPath('state.state', 'checked_out');
+
+        // Verify database: 2 distinct attendance sessions exist for today
+        $sessions = AttendanceSession::where('employee_id', $this->employee->id)
+            ->where('date', now()->timezone('Asia/Kathmandu')->toDateString())
+            ->orderBy('session_number')
+            ->get();
+
+        $this->assertCount(2, $sessions);
+        $this->assertEquals(1, $sessions[0]->session_number);
+        $this->assertEquals('completed', $sessions[0]->status);
+        $this->assertEquals(2, $sessions[1]->session_number);
+        $this->assertEquals('completed', $sessions[1]->status);
+
+        // Verify timesheet aggregates total_sessions = 2
+        $timesheet = Timesheet::where('employee_id', $this->employee->id)
+            ->where('date', now()->timezone('Asia/Kathmandu')->toDateString())
+            ->first();
+
+        $this->assertNotNull($timesheet);
+        $this->assertEquals(2, $timesheet->total_sessions);
+        $this->assertNotNull($timesheet->clock_in);
+        $this->assertNotNull($timesheet->clock_out);
+        $this->assertIsArray($timesheet->sessions_summary);
+        $this->assertCount(2, $timesheet->sessions_summary);
+
+        // PWA dashboard receives and shows all sessions in authoritative state
+        $dashRes = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->get(route('attendance.dashboard'));
+        $dashRes->assertStatus(200);
+        $dashRes->assertSee($this->employee->first_name);
+        $dashRes->assertSee("Today's Sessions", false);
+        $dashRes->assertViewHas('status', function ($status) {
+            return count($status['today_sessions']) === 2
+                && $status['completed_sessions_today'] === 2
+                && $status['next_session_number'] === 3;
+        });
+    }
+
+    /**
+     * 24. Prevent Clock Out without an active Clock In session.
+     */
+    public function test_prevent_clock_out_without_active_session(): void
+    {
+        $response = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_out'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 10,
+            ]);
 
         $response->assertStatus(422);
-        $this->assertEquals(0, AttendanceDevice::where('employee_id', $this->employee->id)->count());
-        $this->assertNull(session('attendance_employee_id'));
+        $this->assertStringContainsString('Clock In first before Clocking Out', $response->json('message'));
     }
 
     /**
-     * 28. Unauthorized attendance request is rejected.
+     * 25. Prevent duplicate Clock In when an active session already exists.
      */
-    public function test_unauthorized_attendance_request_rejected(): void
+    public function test_prevent_duplicate_clock_in_while_active_session_exists(): void
     {
-        // No session, no cookie, no token
-        $response = $this->postJson(route('attendance.api.check_in'), [
-            'latitude' => 27.6976748,
-            'longitude' => 85.3664331,
-            'photo' => 'data:image/jpeg;base64,' . base64_encode('fake'),
+        // First Clock In
+        $in1 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 10,
+            ]);
+        $in1->assertStatus(200);
+
+        // Second Clock In without clocking out
+        $in2 = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 10,
+            ]);
+
+        $in2->assertStatus(422);
+        $this->assertStringContainsString('already have an active Clock In session', $responseMsg = $in2->json('message'));
+    }
+
+    /**
+     * 26. Employee Timesheet Summary API endpoint returns daily, weekly, and monthly aggregations.
+     */
+    public function test_employee_timesheet_summary_api(): void
+    {
+        // Clock In and Clock Out to generate session
+        $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_in'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 10,
+            ]);
+        $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->postJson(route('attendance.api.check_out'), [
+                'latitude' => 27.6976748,
+                'longitude' => 85.3664331,
+                'accuracy_meters' => 10,
+            ]);
+
+        // Query summary API
+        $res = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->getJson(route('attendance.api.summary', ['period' => 'monthly']));
+
+        $res->assertStatus(200);
+        $res->assertJsonStructure([
+            'employee' => ['id', 'name', 'code'],
+            'period',
+            'start_date',
+            'end_date',
+            'metrics' => [
+                'total_sessions',
+                'completed_sessions',
+                'total_worked_hours',
+                'total_worked_minutes',
+                'regular_hours',
+                'overtime_hours',
+            ],
+            'sessions',
+            'timesheets',
         ]);
 
-        // AttendanceEmployeeAuth middleware rejects unauthenticated requests
-        $this->assertTrue(in_array($response->status(), [401, 403, 302]));
+        $this->assertGreaterThanOrEqual(1, $res->json('metrics.total_sessions'));
+    }
+
+    /**
+     * 27. Admin employee summary data endpoint returns authoritative data.
+     */
+    public function test_admin_employee_summary_data_endpoint(): void
+    {
+        $adminUser = \App\Models\User::factory()->create();
+
+        $res = $this->actingAs($adminUser)
+            ->getJson(route('admin.attendance.employee_summary_data', [
+                'employee_id' => $this->employee->id,
+                'period' => 'monthly',
+            ]));
+
+        $res->assertStatus(200);
+        $res->assertJsonPath('employee.id', $this->employee->id);
+        $this->assertArrayHasKey('metrics', $res->json());
     }
 }

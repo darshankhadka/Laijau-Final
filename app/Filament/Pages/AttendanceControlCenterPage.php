@@ -3,12 +3,12 @@
 namespace App\Filament\Pages;
 
 use App\Models\Attendance\AttendanceAuditLog;
-use App\Models\Attendance\AttendanceDevice;
 use App\Models\Attendance\AttendanceEvent;
 use App\Models\Attendance\AttendanceLocation;
 use App\Models\Attendance\AttendanceLocationUpdate;
 use App\Models\Attendance\AttendanceSetting;
 use App\Models\Hrm\Employee;
+use App\Services\Attendance\AttendanceService;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -16,7 +16,7 @@ use Filament\Support\Enums\Width;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 
 class AttendanceControlCenterPage extends Page
 {
@@ -33,11 +33,16 @@ class AttendanceControlCenterPage extends Page
     // Active Navigation Tab
     public string $activeTab = 'overview'; // 'overview', 'map', 'employees', 'locations', 'settings', 'audit'
 
-    // Form states for modals
+    // Form states for PIN modals
     public ?int $selectedEmployeeId = null;
     public string $newPin = '';
     public string $newPinConfirmation = '';
     public bool $showPinModal = false;
+
+    // Generated PIN modal
+    public ?string $generatedPin = null;
+    public ?string $generatedPinEmployeeName = null;
+    public bool $showGeneratedPinModal = false;
 
     // Location edit state
     public ?int $editingLocationId = null;
@@ -53,12 +58,10 @@ class AttendanceControlCenterPage extends Page
     // Attendance Settings state
     public bool $attEnabled = true;
     public bool $gpsRequired = true;
-    public bool $photoRequired = true;
     public bool $geofencingEnabled = true;
     public int $showroomGeofenceRadius = 100;
     public int $maxGpsAccuracy = 100;
     public int $heartbeatInterval = 180;
-    public int $maxAllowedDevices = 2;
     public int $maxFailedAttempts = 5;
     public int $lockoutMinutes = 15;
 
@@ -112,13 +115,11 @@ class AttendanceControlCenterPage extends Page
     {
         $this->attEnabled = AttendanceSetting::get('attendance_enabled', true);
         $this->gpsRequired = AttendanceSetting::get('gps_required', true);
-        $this->photoRequired = AttendanceSetting::get('photo_required', true);
         $this->geofencingEnabled = AttendanceSetting::get('geofencing_enabled', true);
         $defaultLoc = AttendanceLocation::where('is_default', true)->first() ?? AttendanceLocation::first();
         $this->showroomGeofenceRadius = $defaultLoc ? $defaultLoc->radius_meters : AttendanceSetting::get('geofence_radius_meters', 100);
         $this->maxGpsAccuracy = AttendanceSetting::get('max_gps_accuracy_meters', 100);
         $this->heartbeatInterval = AttendanceSetting::get('heartbeat_interval_seconds', 180);
-        $this->maxAllowedDevices = AttendanceSetting::get('max_allowed_devices', 2);
         $this->maxFailedAttempts = AttendanceSetting::get('max_failed_attempts', 5);
         $this->lockoutMinutes = AttendanceSetting::get('lockout_minutes', 15);
     }
@@ -164,7 +165,7 @@ class AttendanceControlCenterPage extends Page
     public function getCheckedInEmployeesForMap(): Collection
     {
         $today = now()->startOfDay();
-        $checkIns = AttendanceEvent::with(['employee', 'location', 'device'])
+        $checkIns = AttendanceEvent::with(['employee', 'location'])
             ->where('server_recorded_at', '>=', $today)
             ->where('type', 'check_in')
             ->where('status', 'verified')
@@ -182,7 +183,6 @@ class AttendanceControlCenterPage extends Page
         $activeCheckIns = $checkIns->filter(fn ($ev) => !in_array($ev->employee_id, $checkOutIds));
 
         return $activeCheckIns->map(function ($ev) {
-            // Get latest heartbeat location update if available
             $latestLoc = AttendanceLocationUpdate::where('employee_id', $ev->employee_id)
                 ->latest('recorded_at')
                 ->first();
@@ -203,17 +203,16 @@ class AttendanceControlCenterPage extends Page
                 'accuracy' => $acc ? round($acc) : null,
                 'last_updated_human' => $lastUpdated ? $lastUpdated->diffForHumans() : 'Just now',
                 'is_stale' => $isStale,
-                'photo_url' => $ev->photo_path ? route('attendance.photo', ['event' => $ev->id]) : null,
             ];
         })->filter(fn ($e) => $e['latitude'] !== null && $e['longitude'] !== null)->values();
     }
 
     /**
-     * Get list of employees with attendance credentials & device stats.
+     * Get list of employees with attendance credentials.
      */
     public function getEmployeesList(): Collection
     {
-        return Employee::with(['activeAttendanceDevices', 'department', 'position'])
+        return Employee::with(['department', 'position'])
             ->where('status', 'active')
             ->orderBy('employee_number', 'asc')
             ->get()
@@ -224,18 +223,57 @@ class AttendanceControlCenterPage extends Page
                     'name' => $emp->full_name,
                     'phone' => $emp->phone,
                     'department' => $emp->department?->name ?? 'Showroom',
+                    'position' => $emp->position?->title ?? 'Staff',
                     'has_pin' => $emp->hasAttendancePin(),
                     'pin_set_at' => $emp->attendance_pin_set_at?->format('M d, Y'),
                     'is_locked' => $emp->isAttendanceLocked(),
                     'access_enabled' => $emp->attendance_access_enabled,
-                    'active_devices_count' => $emp->activeAttendanceDevices->count(),
-                    'devices' => $emp->activeAttendanceDevices,
+                    'can_punch_from_anywhere' => $emp->canPunchFromAnywhere(),
                 ];
             });
     }
 
     /**
-     * Open PIN creation/reset modal.
+     * Automatically generate and assign a unique numeric PIN for an employee.
+     */
+    public function generatePinForEmployee(int $employeeId): void
+    {
+        $employee = Employee::find($employeeId);
+        if (!$employee) {
+            Notification::make()->title('Error')->body('Employee not found.')->danger()->send();
+            return;
+        }
+
+        /** @var AttendanceService $service */
+        $service = app(AttendanceService::class);
+        $pin = $service->generateUniquePin();
+
+        try {
+            $service->setEmployeePin($employee, $pin);
+
+            $this->generatedPin = $pin;
+            $this->generatedPinEmployeeName = $employee->full_name . ' (' . $employee->employee_number . ')';
+            $this->showGeneratedPinModal = true;
+
+            Notification::make()
+                ->title('Unique PIN Generated')
+                ->body("A unique PIN has been generated for {$employee->full_name}.")
+                ->success()
+                ->send();
+        } catch (ValidationException $e) {
+            Notification::make()->title('Error')->body($e->getMessage())->danger()->send();
+        }
+    }
+
+    public function closeGeneratedPinModal(): void
+    {
+        $this->showGeneratedPinModal = false;
+        $this->generatedPin = null;
+        $this->generatedPinEmployeeName = null;
+    }
+
+    /**
+     * Open PIN creation/reset modal for custom PIN entry.
      */
     public function openPinModal(int $employeeId): void
     {
@@ -274,22 +312,22 @@ class AttendanceControlCenterPage extends Page
             return;
         }
 
-        $isReset = $employee->hasAttendancePin();
-        $employee->setAttendancePin($this->newPin);
+        try {
+            /** @var AttendanceService $service */
+            $service = app(AttendanceService::class);
+            $service->setEmployeePin($employee, $this->newPin);
 
-        AttendanceAuditLog::log(
-            action: $isReset ? 'pin_reset_by_admin' : 'pin_created_by_admin',
-            employeeId: $employee->id,
-            details: "Administrator set/reset attendance PIN for employee {$employee->employee_number} ({$employee->full_name})."
-        );
+            Notification::make()
+                ->title('PIN Updated')
+                ->body("Attendance PIN for {$employee->full_name} has been securely updated.")
+                ->success()
+                ->send();
 
-        Notification::make()
-            ->title('PIN Updated')
-            ->body("Attendance PIN for {$employee->full_name} has been securely updated.")
-            ->success()
-            ->send();
-
-        $this->closePinModal();
+            $this->closePinModal();
+        } catch (ValidationException $e) {
+            $msg = $e->validator->errors()->first('pin') ?? $e->getMessage();
+            Notification::make()->title('Validation Error')->body($msg)->danger()->send();
+        }
     }
 
     /**
@@ -317,25 +355,25 @@ class AttendanceControlCenterPage extends Page
     }
 
     /**
-     * Revoke employee device.
+     * Unlock employee if temporarily locked.
      */
-    public function revokeDevice(int $deviceId): void
+    public function unlockEmployee(int $employeeId): void
     {
-        $device = AttendanceDevice::find($deviceId);
-        if (!$device) return;
+        $employee = Employee::find($employeeId);
+        if (!$employee) return;
 
-        $device->revoke(auth()->id(), 'Revoked by administrator from Control Center');
+        $employee->clearFailedPinAttempts();
 
         AttendanceAuditLog::log(
-            action: 'device_revoked_by_admin',
-            employeeId: $device->employee_id,
-            details: "Device '{$device->device_name}' (#{$device->id}) revoked by administrator."
+            action: 'employee_unlocked',
+            employeeId: $employee->id,
+            details: "Administrator unlocked attendance access for employee {$employee->employee_number} ({$employee->full_name})."
         );
 
         Notification::make()
-            ->title('Device Revoked')
-            ->body("Device {$device->device_name} has been revoked and can no longer record attendance.")
-            ->warning()
+            ->title('Employee Unlocked')
+            ->body("Attendance lockout cleared for {$employee->full_name}.")
+            ->success()
             ->send();
     }
 
@@ -414,12 +452,10 @@ class AttendanceControlCenterPage extends Page
     {
         AttendanceSetting::set('attendance_enabled', $this->attEnabled, 'boolean');
         AttendanceSetting::set('gps_required', $this->gpsRequired, 'boolean');
-        AttendanceSetting::set('photo_required', $this->photoRequired, 'boolean');
         AttendanceSetting::set('geofencing_enabled', $this->geofencingEnabled, 'boolean');
         AttendanceSetting::set('geofence_radius_meters', $this->showroomGeofenceRadius, 'integer');
         AttendanceSetting::set('max_gps_accuracy_meters', $this->maxGpsAccuracy, 'integer');
         AttendanceSetting::set('heartbeat_interval_seconds', $this->heartbeatInterval, 'integer');
-        AttendanceSetting::set('max_allowed_devices', $this->maxAllowedDevices, 'integer');
         AttendanceSetting::set('max_failed_attempts', $this->maxFailedAttempts, 'integer');
         AttendanceSetting::set('lockout_minutes', $this->lockoutMinutes, 'integer');
 
@@ -462,7 +498,7 @@ class AttendanceControlCenterPage extends Page
      */
     public function getTodayEvents(): Collection
     {
-        return AttendanceEvent::with(['employee', 'location', 'device'])
+        return AttendanceEvent::with(['employee', 'location'])
             ->where('server_recorded_at', '>=', now()->startOfDay())
             ->orderBy('server_recorded_at', 'desc')
             ->limit(50)

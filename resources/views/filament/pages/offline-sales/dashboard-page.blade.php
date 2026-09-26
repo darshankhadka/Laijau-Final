@@ -52,4 +52,7 @@
         <!-- Modals required by Dashboard: Shift Report -->
         @include('filament.pages.offline-sales.modals.shift-report')
     </div>
+
+    <!-- POS Scripts for Shift Report & Modal Printing Handlers -->
+    @include('filament.pages.offline-sales.scripts')
 </x-filament-panels::page>

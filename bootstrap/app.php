@@ -36,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->encryptCookies(except: [
             'laijau_attendance_device',
+            'laijau_attendance_session',
         ]);
         $middleware->web(append: [
             \App\Http\Middleware\StorefrontMaintenanceMiddleware::class,

@@ -58,6 +58,25 @@ trait InteractsWithPosSession
     // Active Modal state
     public ?string $activeModal = null;
 
+    public function openModal(string $modal): void
+    {
+        if ($modal === 'shift_report') {
+            if (method_exists($this, 'openShiftReportModal')) {
+                $this->openShiftReportModal();
+                return;
+            }
+            if (!$this->closingSessionId) {
+                $stationId = (property_exists($this, 'dashboardStationId') && $this->dashboardStationId) ? $this->dashboardStationId : $this->selectedStationId;
+                $state = app(PosSessionService::class)->getTerminalSessionState($stationId);
+                $this->closingSessionId = $state['session']?->id
+                    ?? PosSession::where('pos_station_id', $stationId)->latest('id')->value('id')
+                    ?? PosSession::latest('id')->value('id');
+            }
+        }
+
+        $this->activeModal = $modal;
+    }
+
     public function closeModal(): void
     {
         $this->activeModal = null;

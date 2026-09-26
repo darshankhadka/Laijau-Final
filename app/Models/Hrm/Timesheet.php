@@ -39,6 +39,10 @@ class Timesheet extends Model
         'notes',
         'status',
         'attendance_status',
+        'total_sessions',
+        'total_worked_minutes',
+        'total_worked_hours',
+        'sessions_summary',
         'is_missing_punch',
         'correction_requested',
         'correction_notes',
@@ -62,6 +66,10 @@ class Timesheet extends Model
         'clock_in_longitude' => 'decimal:7',
         'clock_out_latitude' => 'decimal:7',
         'clock_out_longitude' => 'decimal:7',
+        'total_sessions' => 'integer',
+        'total_worked_minutes' => 'integer',
+        'total_worked_hours' => 'decimal:2',
+        'sessions_summary' => 'array',
         'approved_at' => 'datetime',
     ];
 
@@ -73,6 +81,11 @@ class Timesheet extends Model
     public function approvedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function attendanceSessions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\Attendance\AttendanceSession::class, 'timesheet_id')->orderBy('session_number', 'asc');
     }
 
     /**

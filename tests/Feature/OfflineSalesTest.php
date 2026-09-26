@@ -456,10 +456,6 @@ class OfflineSalesTest extends TestCase
         \Livewire\Livewire::test(\App\Filament\Pages\OfflineSales::class)
             ->assertSuccessful()
             ->assertSee('LAIJAU')
-            ->assertSee('New Sale')
-            ->assertSee('Sales History')
-            ->assertSee('Dashboard')
-            ->assertSee('Product Metrics')
             // Open session with opening cash float
             ->set('openingCashInput', 1000.00)
             ->call('openDailySession')
