@@ -96,9 +96,33 @@ class AttendanceLoginScreenTest extends TestCase
         $this->assertStringContainsString("img-src 'self'", $content);
         $this->assertStringContainsString("connect-src 'self'", $content);
         $this->assertStringContainsString("frame-src 'self'", $content);
+        $this->assertStringContainsString("media-src 'self'", $content);
+        $this->assertStringContainsString("blob:", $content);
 
         // Verify /attendance view references the Alpine CDN script matching the CSP rule
         $response = $this->get(route('attendance.login'));
         $response->assertSee('https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js', false);
     }
+
+    public function test_permissions_policy_allows_camera_and_geolocation_on_self(): void
+    {
+        $htaccessPath = public_path('.htaccess');
+        $this->assertFileExists($htaccessPath);
+        $content = file_get_contents($htaccessPath);
+
+        // Verify Permissions-Policy allows camera and geolocation for self, while keeping microphone disabled
+        $this->assertStringContainsString('Header always set Permissions-Policy', $content);
+        $this->assertStringContainsString('camera=(self)', $content);
+        $this->assertStringContainsString('geolocation=(self)', $content);
+        $this->assertStringContainsString('microphone=()', $content);
+        $this->assertStringContainsString('payment=()', $content);
+
+        // Verify Nginx config matches
+        $nginxConfPath = base_path('deploy/nginx/laijau.conf');
+        if (file_exists($nginxConfPath)) {
+            $nginxContent = file_get_contents($nginxConfPath);
+            $this->assertStringContainsString('Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=()"', $nginxContent);
+        }
+    }
 }
+

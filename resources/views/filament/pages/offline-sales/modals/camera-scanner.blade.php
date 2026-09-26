@@ -18,6 +18,25 @@
                 cameras: [],
                 selectedCameraId: '',
 
+                async ensureLibraryLoaded() {
+                    if (typeof Html5Qrcode !== 'undefined') return true;
+                    return new Promise((resolve) => {
+                        let script = document.querySelector('script[src*="html5-qrcode"]');
+                        if (!script) {
+                            script = document.createElement('script');
+                            script.src = '/js/html5-qrcode.min.js?v=2.3.8';
+                            document.head.appendChild(script);
+                        }
+                        if (typeof Html5Qrcode !== 'undefined') {
+                            resolve(true);
+                            return;
+                        }
+                        script.addEventListener('load', () => resolve(true), { once: true });
+                        script.addEventListener('error', () => resolve(false), { once: true });
+                        setTimeout(() => resolve(typeof Html5Qrcode !== 'undefined'), 1500);
+                    });
+                },
+
                 async openScanner() {
                     this.isOpen = true;
                     this.hasError = false;
@@ -30,12 +49,14 @@
                     this.isInsecureContext = !isLocal && !isHttps;
 
                     this.$nextTick(async () => {
+                        await this.ensureLibraryLoaded();
                         await this.loadCameras();
                         await this.startCamera();
                     });
                 },
 
                 async loadCameras() {
+                    await this.ensureLibraryLoaded();
                     if (typeof Html5Qrcode === 'undefined') return;
                     try {
                         const devices = await Html5Qrcode.getCameras();
@@ -54,6 +75,7 @@
                 },
 
                 async startCamera() {
+                    await this.ensureLibraryLoaded();
                     if (typeof Html5Qrcode === 'undefined') {
                         this.hasError = true;
                         this.errorMessage = 'Scanner library is loading. Please wait a moment and tap Retry.';
@@ -152,13 +174,27 @@
                                 const vp = document.getElementById("lj-pos-camera-viewport");
                                 if (vp) vp.innerHTML = '';
                                 this.html5QrCode = new Html5Qrcode("lj-pos-camera-viewport", { verbose: false });
-                                await this.html5QrCode.start(
-                                    { facingMode: this.facingMode },
-                                    config,
-                                    onScanSuccess,
-                                    () => {}
-                                );
-                                started = true;
+                                try {
+                                    await this.html5QrCode.start(
+                                        { facingMode: this.facingMode },
+                                        config,
+                                        onScanSuccess,
+                                        () => {}
+                                    );
+                                    started = true;
+                                } catch (eFacingSimple) {
+                                    console.warn("Retrying with default unconstrained camera:", eFacingSimple);
+                                    await this.stopCamera();
+                                    if (vp) vp.innerHTML = '';
+                                    this.html5QrCode = new Html5Qrcode("lj-pos-camera-viewport", { verbose: false });
+                                    await this.html5QrCode.start(
+                                        {},
+                                        config,
+                                        onScanSuccess,
+                                        () => {}
+                                    );
+                                    started = true;
+                                }
                             }
                         }
 

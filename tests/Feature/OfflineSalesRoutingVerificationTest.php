@@ -106,4 +106,34 @@ class OfflineSalesRoutingVerificationTest extends TestCase
         $shortcutJs = file_get_contents(public_path('js/retail-keyboard-shortcuts.js'));
         $this->assertStringContainsString("window.open('/intadmin/offline-sales/POS', '_blank')", $shortcutJs);
     }
+
+    public function test_pos_camera_scanner_integration_and_permissions_policy_compatibility(): void
+    {
+        // 1. POS view contains the camera scanner trigger and modal
+        $response = $this->actingAs($this->admin, 'admin')->get('/intadmin/offline-sales/POS');
+        $response->assertStatus(200);
+        $response->assertSee('open-pos-camera', false);
+        $response->assertSee('lj-pos-camera-btn', false);
+        $response->assertSee('posCameraScanner()', false);
+        $response->assertSee('/js/html5-qrcode.min.js', false);
+
+        // 2. Hardware camera scanner library file exists
+        $this->assertFileExists(public_path('js/html5-qrcode.min.js'));
+
+        // 3. Security policies allow camera on self and required media streams/blobs
+        $htaccessPath = public_path('.htaccess');
+        $this->assertFileExists($htaccessPath);
+        $content = file_get_contents($htaccessPath);
+
+        // Permissions-Policy permits camera on self
+        $this->assertStringContainsString('Header always set Permissions-Policy', $content);
+        $this->assertStringContainsString('camera=(self)', $content);
+
+        // Content-Security-Policy permits media streams and blob URIs for camera video/captures
+        $this->assertStringContainsString('Header always set Content-Security-Policy', $content);
+        $this->assertStringContainsString('media-src', $content);
+        $this->assertStringContainsString('mediastream:', $content);
+        $this->assertStringContainsString('blob:', $content);
+    }
 }
+
