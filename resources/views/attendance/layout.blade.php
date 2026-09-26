@@ -63,16 +63,21 @@
             -webkit-tap-highlight-color: transparent;
         }
 
+        html, body {
+            height: 100%;
+        }
+
         body {
             font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background-color: var(--att-gray-100);
             color: var(--att-gray-900);
             line-height: 1.5;
             min-height: 100vh;
+            min-height: 100dvh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding-bottom: env(safe-area-inset-bottom, 1.5rem);
+            overflow-x: hidden;
         }
 
         /* App Container constrained for true mobile feel */
@@ -80,6 +85,7 @@
             width: 100%;
             max-width: 440px;
             min-height: 100vh;
+            min-height: 100dvh;
             background: #ffffff;
             box-shadow: 0 0 50px rgba(0, 0, 0, 0.05);
             display: flex;
@@ -89,13 +95,13 @@
 
         @media (min-width: 441px) {
             body {
-                padding: 1.5rem 1rem;
+                padding: 1rem;
             }
             .att-app-shell {
-                min-height: calc(100vh - 3rem);
+                min-height: auto;
+                max-height: calc(100dvh - 2rem);
                 border-radius: var(--att-radius-lg);
                 border: 1px solid var(--att-gray-200);
-                overflow: hidden;
             }
         }
 
@@ -103,13 +109,15 @@
         .att-header {
             background: #ffffff;
             border-bottom: 1px solid var(--att-gray-200);
-            padding: 0.875rem 1.25rem;
+            padding: 0.625rem 1rem;
+            padding-top: max(env(safe-area-inset-top, 0px), 0.625rem);
             display: flex;
             align-items: center;
             justify-content: space-between;
             position: sticky;
             top: 0;
             z-index: 40;
+            flex-shrink: 0;
         }
         .att-brand {
             display: flex;
@@ -153,10 +161,13 @@
         /* Main Body */
         .att-content {
             flex: 1;
-            padding: 1.25rem;
+            padding: clamp(0.75rem, 2vh, 1.25rem);
+            padding-bottom: max(env(safe-area-inset-bottom, 0px), clamp(0.75rem, 2vh, 1.25rem));
             display: flex;
             flex-direction: column;
-            gap: 1.25rem;
+            gap: 1rem;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         /* Buttons (44px+ touch targets) */
