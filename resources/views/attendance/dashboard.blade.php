@@ -186,6 +186,16 @@
                 <div style="flex:1;">
                     <div style="font-weight:800;font-size:0.8125rem;">Location Notice</div>
                     <div style="font-size:0.75rem;margin-top:0.25rem;line-height:1.4;" x-text="punchErrorMessage"></div>
+                    <div style="margin-top:0.5rem;" x-show="punchType">
+                        <button
+                            type="button"
+                            @click="punch(punchType)"
+                            :disabled="punchLoading"
+                            style="background:#dc2626;color:#ffffff;border:none;border-radius:0.375rem;padding:0.3rem 0.65rem;font-size:0.6875rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:0.25rem;">
+                            <span>↻</span>
+                            <span>Retry</span>
+                        </button>
+                    </div>
                 </div>
                 <button
                     type="button"
@@ -338,6 +348,17 @@ function attendanceDashboard(initialStatus, settings, canPunchAnywhere = false) 
             // Heartbeat
             const hbSeconds = (this.settings.heartbeat_interval_seconds || 180) * 1000;
             this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), hbSeconds);
+
+            // Pre-warm device geolocation cache so subsequent punches resolve rapidly
+            if (navigator.geolocation) {
+                try {
+                    navigator.geolocation.getCurrentPosition(
+                        () => {},
+                        () => {},
+                        { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+                    );
+                } catch (e) {}
+            }
         },
 
         updateGreeting() {
@@ -428,14 +449,72 @@ function attendanceDashboard(initialStatus, settings, canPunchAnywhere = false) 
             }
         },
 
-        punch(type) {
+        resolveGpsCoordinates() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    return reject({ code: 0, message: 'Geolocation is not supported on this device/browser.' });
+                }
+
+                let completed = false;
+
+                // Tier 2: Network / Wi-Fi / Cell tower triangulation fallback (resolves fast indoors)
+                const runFallback = () => {
+                    if (completed) return;
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                            if (completed) return;
+                            completed = true;
+                            resolve(pos);
+                        },
+                        (err) => {
+                            if (completed) return;
+                            completed = true;
+                            reject(err);
+                        },
+                        { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 }
+                    );
+                };
+
+                // Safety timeout for Tier 1: if hardware satellite lock takes > 7.5s, trigger network fallback
+                const stage1Timer = setTimeout(() => {
+                    if (!completed) {
+                        console.warn('GPS satellite lock taking long; falling back to network geolocation...');
+                        runFallback();
+                    }
+                }, 7500);
+
+                // Tier 1: Try high accuracy GPS (allows cached fix up to 60s for instant punches)
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        if (completed) return;
+                        completed = true;
+                        clearTimeout(stage1Timer);
+                        resolve(pos);
+                    },
+                    (err) => {
+                        if (completed) return;
+                        clearTimeout(stage1Timer);
+                        // If permission explicitly denied by user, do not retry
+                        if (err.code === 1 || err.code === err.PERMISSION_DENIED) {
+                            completed = true;
+                            return reject(err);
+                        }
+                        // For timeout or hardware unavailability, seamlessly fall back to network location
+                        runFallback();
+                    },
+                    { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 }
+                );
+            });
+        },
+
+        async punch(type) {
             this.punchLoading = true;
             this.punchType = type;
             this.punchErrorMessage = null;
 
             if (!navigator.geolocation) {
                 if (this.canPunchAnywhere) {
-                    this.sendPunchRequest(type, null, null, null);
+                    await this.sendPunchRequest(type, null, null, null);
                     return;
                 }
                 this.punchLoading = false;
@@ -443,41 +522,38 @@ function attendanceDashboard(initialStatus, settings, canPunchAnywhere = false) 
                 return;
             }
 
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    const lat = pos.coords.latitude;
-                    const lon = pos.coords.longitude;
-                    const acc = Math.round(pos.coords.accuracy);
+            try {
+                const pos = await this.resolveGpsCoordinates();
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                const acc = Math.round(pos.coords.accuracy);
 
-                    const maxAcc = this.settings?.max_gps_accuracy_meters || 100;
-                    if (acc > maxAcc && !this.canPunchAnywhere) {
-                        this.punchLoading = false;
-                        this.punchErrorMessage = `GPS accuracy is too low (measured: ±${acc}m, required: within ${maxAcc}m). Please move outdoors or near a window and try again.`;
-                        return;
-                    }
-
-                    this.sendPunchRequest(type, lat, lon, acc);
-                },
-                (err) => {
-                    if (this.canPunchAnywhere) {
-                        // Remote authorized employee can punch even if GPS is unavailable
-                        this.sendPunchRequest(type, null, null, null);
-                        return;
-                    }
-
+                const maxAcc = this.settings?.max_gps_accuracy_meters || 100;
+                if (acc > maxAcc && !this.canPunchAnywhere) {
                     this.punchLoading = false;
-                    if (err.code === 1 || err.code === err.PERMISSION_DENIED) {
-                        this.punchErrorMessage = 'Location permission is required to record attendance. Please enable Location access in your device settings.';
-                    } else if (err.code === 2 || err.code === err.POSITION_UNAVAILABLE) {
-                        this.punchErrorMessage = 'GPS position unavailable. Please ensure location services are turned on.';
-                    } else if (err.code === 3 || err.code === err.TIMEOUT) {
-                        this.punchErrorMessage = 'GPS request timed out. Please try again.';
-                    } else {
-                        this.punchErrorMessage = err.message || 'Unable to retrieve GPS coordinates.';
-                    }
-                },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-            );
+                    this.punchErrorMessage = `GPS accuracy is too low (measured: ±${acc}m, required: within ${maxAcc}m). Please move outdoors or closer to a window, then tap Retry.`;
+                    return;
+                }
+
+                await this.sendPunchRequest(type, lat, lon, acc);
+            } catch (err) {
+                if (this.canPunchAnywhere) {
+                    // Remote authorized employee can punch even if GPS is unavailable
+                    await this.sendPunchRequest(type, null, null, null);
+                    return;
+                }
+
+                this.punchLoading = false;
+                if (err.code === 1 || err.code === err.PERMISSION_DENIED) {
+                    this.punchErrorMessage = 'Location permission is required to record attendance. Please allow Location access in your browser or device settings.';
+                } else if (err.code === 2 || err.code === err.POSITION_UNAVAILABLE) {
+                    this.punchErrorMessage = 'GPS position unavailable. Please ensure location services are turned on.';
+                } else if (err.code === 3 || err.code === err.TIMEOUT) {
+                    this.punchErrorMessage = 'GPS request timed out. Please ensure Location is enabled, move near a window, and tap Retry.';
+                } else {
+                    this.punchErrorMessage = err.message || 'Unable to retrieve GPS coordinates. Please tap Retry.';
+                }
+            }
         },
 
         async sendHeartbeat() {

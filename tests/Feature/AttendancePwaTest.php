@@ -836,4 +836,20 @@ class AttendancePwaTest extends TestCase
         $res->assertJsonPath('employee.id', $this->employee->id);
         $this->assertArrayHasKey('metrics', $res->json());
     }
+
+    /**
+     * 28. Attendance dashboard includes progressive GPS resolution and retry mechanics.
+     */
+    public function test_attendance_dashboard_renders_progressive_gps_resolution_and_retry(): void
+    {
+        $res = $this->withSession(['attendance_employee_id' => $this->employee->id])
+            ->get(route('attendance.dashboard'));
+
+        $res->assertStatus(200);
+        $res->assertSee('resolveGpsCoordinates', false);
+        $res->assertSee('Retry', false);
+        $res->assertSee('enableHighAccuracy: false', false);
+        $res->assertSee('enableHighAccuracy: true', false);
+    }
 }
+
